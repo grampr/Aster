@@ -81,16 +81,15 @@ Aster は、テーマを完成後の追加機能として扱いません。
 
 ## リポジトリ方針
 
-設計上は、責務とリリース周期が異なる次の3リポジトリへの分割を予定しています。
+Aster は、責務とリリース周期が異なる次の3リポジトリで開発します。
 
 | リポジトリ | 責務 |
 | --- | --- |
-| Client | Tauri、React UI、WebRTC 制御、OS 統合 |
-| Server | Go API、Gateway、ドメイン機能、DB Migration、Provider 実装 |
-| Protocol / SDK | OpenAPI、Gateway Schema、生成型、Bot SDK、API ドキュメント |
+| `Aster` | Tauri、React UI、WebRTC 制御、OS 統合 |
+| `Aster-server` | Go API、Gateway、ドメイン機能、DB Migration、Provider 実装 |
+| `Aster-protocol` | OpenAPI、Gateway Schema、生成型、Bot SDK、API ドキュメント |
 
-Protocol Schema の正は一か所に固定します。
-実際のリポジトリ名と、この `Aster` リポジトリの役割は、初期セットアップ時に確定します。
+`Aster-protocol` を Protocol Schema の正とし、Client と Server は生成物を利用します。
 
 ## 開発ロードマップ
 
