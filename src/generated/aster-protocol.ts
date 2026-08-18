@@ -46,6 +46,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/google/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Google Loginを開始する
+         * @description Desktop Clientが生成したPKCE S256 ChallengeとClient Stateを短時間のLogin試行へ保存し、
+         *     System Browserで開くGoogle Authorization URLを返します。
+         *     ServerはGoogle向けのOAuth StateとOpenID Connect Nonceを別に生成し、Clientへ秘密情報を返しません。
+         */
+        post: operations["beginGoogleAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GoogleからのAuthorization Callbackを処理する
+         * @description Googleが呼び出すServer側Callbackです。ServerはOAuth State、OpenID Connect Nonce、Issuer、
+         *     Audience、署名を検証します。成功時は短時間かつ一度だけ使用できるAster Exchange Codeと、
+         *     Login開始時のClient Stateだけを`aster://auth/callback`へ302 Redirectします。
+         *     GoogleのAuthorization Code、ID Token、Access Token、Refresh TokenはDeep Linkへ含めません。
+         *
+         *     Googleが認証を拒否した場合は`error=access_denied`、Provider処理に失敗した場合は
+         *     `error=provider_error`とClient Stateを許可済みDeep Linkへ返します。
+         *     OAuth Stateを検証できないRequestはRedirectせず、400 Errorを返します。
+         */
+        get: operations["completeGoogleAuthorization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Google認証結果をAster Sessionへ交換する
+         * @description Callback Deep Linkで受け取ったAster Exchange Codeと、Login開始時に生成したPKCE Verifierを交換します。
+         *     Exchange Codeは一度だけ使用でき、成功・失敗を問わず再利用できません。
+         *     GoogleのTokenはServer側に留まり、ResponseはProvider非依存のAster Session Tokenだけを返します。
+         *
+         *     Google Identityが未Linkで、同じ確認済みEmail Addressを持つ既存Accountがある場合は自動Linkせず、
+         *     `ACCOUNT_LINK_REQUIRED`を返します。
+         */
+        post: operations["exchangeGoogleAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/token/refresh": {
         parameters: {
             query?: never;
@@ -155,6 +229,12 @@ export interface components {
          */
         Email: string;
         /**
+         * AsterExchangeCode
+         * @description Google認証後にAster Serverが発行する、短時間かつ一度だけ使用できる不透明なCodeです。
+         * @example example-one-time-aster-exchange-code
+         */
+        AsterExchangeCode: string;
+        /**
          * Error
          * @description API Error の共通形式です。
          */
@@ -191,6 +271,60 @@ export interface components {
              */
             version: string;
             time: components["schemas"]["Timestamp"];
+        };
+        /**
+         * GoogleAuthorizationRequest
+         * @description Google Loginを開始するDesktop ClientのPKCE情報です。
+         * @example {
+         *       "redirect_uri": "aster://auth/callback",
+         *       "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+         *       "code_challenge_method": "S256",
+         *       "client_state": "yxE4J7vB63qQj8VWfKE7i3wmMl7E2kY5gD0hT2uS9_A"
+         *     }
+         */
+        GoogleAuthorizationRequest: {
+            /**
+             * Format: uri
+             * @description 許可されたAster DesktopのDeep Linkです。任意のRedirect URIは受け付けません。
+             * @constant
+             */
+            redirect_uri: "aster://auth/callback";
+            code_challenge: components["schemas"]["PkceCodeChallenge"];
+            /**
+             * @description Aster Desktopが使用できるPKCE変換方式です。
+             * @constant
+             */
+            code_challenge_method: "S256";
+            client_state: components["schemas"]["OAuthClientState"];
+        };
+        /**
+         * GoogleAuthorizationResponse
+         * @description System Browserで開くGoogle Authorization URLです。
+         * @example {
+         *       "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=example&response_type=code",
+         *       "expires_in": 300
+         *     }
+         */
+        GoogleAuthorizationResponse: {
+            /**
+             * Format: uri
+             * @description ServerがOAuth StateとOpenID Connect Nonceを組み込んだGoogle Authorization URLです。
+             */
+            authorization_url: string;
+            /** @description Login試行が失効するまでの秒数です。 */
+            expires_in: number;
+        };
+        /**
+         * GoogleExchangeRequest
+         * @description 一度限りのAster Exchange CodeをProvider非依存のAster Sessionへ交換します。
+         * @example {
+         *       "exchange_code": "example-one-time-aster-exchange-code",
+         *       "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+         *     }
+         */
+        GoogleExchangeRequest: {
+            exchange_code: components["schemas"]["AsterExchangeCode"];
+            code_verifier: components["schemas"]["PkceCodeVerifier"];
         };
         /**
          * LoginPasswordRequest
@@ -241,6 +375,24 @@ export interface components {
          * @example <password-with-15-or-more-characters>
          */
         Password: string;
+        /**
+         * PkceCodeChallenge
+         * @description PKCE S256でCode Verifierから生成した、PaddingなしのBase64url値です。
+         * @example E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+         */
+        PkceCodeChallenge: string;
+        /**
+         * PkceCodeVerifier
+         * @description RFC 7636のUnreserved Characterだけで構成するPKCE Code Verifierです。
+         * @example dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+         */
+        PkceCodeVerifier: string;
+        /**
+         * OAuthClientState
+         * @description Desktop ClientがLogin開始とDeep Link Callbackを照合するために生成する不透明な値です。
+         * @example yxE4J7vB63qQj8VWfKE7i3wmMl7E2kY5gD0hT2uS9_A
+         */
+        OAuthClientState: string;
         /**
          * RateLimitDetails
          * @description Rate Limit Error に固有の再試行情報です。
@@ -389,6 +541,23 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description 確認済みEmail Addressが既存Accountで使用されているため、自動Linkや新規Account作成を行いませんでした。 */
+        AccountLinkRequired: {
+            headers: {
+                "X-Request-ID": components["headers"]["RequestId"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "ACCOUNT_LINK_REQUIRED",
+                 *       "message": "Sign in to the existing account before linking Google",
+                 *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Request を完了できませんでした。 */
         Error: {
             headers: {
@@ -417,6 +586,23 @@ export interface components {
                  * @example {
                  *       "code": "INVALID_CREDENTIALS",
                  *       "message": "Email or password is incorrect",
+                 *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Exchange Codeが無効、失効済み、使用済み、またはPKCE検証に失敗したためSessionを作成しませんでした。 */
+        InvalidAuthorizationGrant: {
+            headers: {
+                "X-Request-ID": components["headers"]["RequestId"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "INVALID_AUTHORIZATION_GRANT",
+                 *       "message": "Authorization grant is invalid or expired",
                  *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
                  *     }
                  */
@@ -623,6 +809,140 @@ export interface operations {
                 };
             };
             401: components["responses"]["InvalidCredentials"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    beginGoogleAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "redirect_uri": "aster://auth/callback",
+                 *       "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+                 *       "code_challenge_method": "S256",
+                 *       "client_state": "yxE4J7vB63qQj8VWfKE7i3wmMl7E2kY5gD0hT2uS9_A"
+                 *     }
+                 */
+                "application/json": components["schemas"]["GoogleAuthorizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Google Authorization URLを作成しました。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=example&response_type=code",
+                     *       "expires_in": 300
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GoogleAuthorizationResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    completeGoogleAuthorization: {
+        parameters: {
+            query: {
+                /** @description Googleが発行したAuthorization Codeです。Server内部でのみ交換します。 */
+                code?: string;
+                /** @description ServerがGoogle Authorization Requestに設定したOAuth Stateです。 */
+                state: string;
+                /** @description GoogleがAuthorizationを完了できなかった理由です。 */
+                error?: string;
+                /** @description Googleが返す補足情報です。Deep Linkへそのまま転送しません。 */
+                error_description?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 許可済みAster Desktop Deep Linkへ認証結果をRedirectします。 */
+            302: {
+                headers: {
+                    /** @description Exchange Codeまたは安全なError CodeとClient Stateを含むAster Deep Linkです。 */
+                    Location: string;
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OAuth Stateが無効、失効済み、またはCallback Parameterの組み合わせが不正です。 */
+            400: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "INVALID_OAUTH_CALLBACK",
+                     *       "message": "OAuth callback is invalid or expired",
+                     *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeGoogleAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "exchange_code": "example-one-time-aster-exchange-code",
+                 *       "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+                 *     }
+                 */
+                "application/json": components["schemas"]["GoogleExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Google Identityを確認し、Aster Sessionを作成しました。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "access_token": "example-access-token",
+                     *       "refresh_token": "example-refresh-token",
+                     *       "token_type": "Bearer",
+                     *       "expires_in": 900,
+                     *       "refresh_expires_in": 2592000,
+                     *       "session_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SessionTokenResponse"];
+                };
+            };
+            400: components["responses"]["InvalidAuthorizationGrant"];
+            409: components["responses"]["AccountLinkRequired"];
             429: components["responses"]["RateLimited"];
             default: components["responses"]["Error"];
         };

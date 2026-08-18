@@ -1,4 +1,6 @@
 use keyring::{Entry, Error as KeyringError};
+#[cfg(desktop)]
+use tauri::Manager;
 
 const KEYRING_SERVICE: &str = "dev.aster.desktop";
 const REFRESH_TOKEN_ACCOUNT: &str = "default-session-refresh-token";
@@ -38,9 +40,20 @@ fn delete_refresh_token() -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             save_refresh_token,
             load_refresh_token,

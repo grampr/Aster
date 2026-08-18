@@ -7,7 +7,7 @@ import { useAuth } from "./AuthProvider";
 import { isTauriRuntime } from "./runtime";
 
 export function LoginScreen() {
-  const { error, loginWithPassword, retrySession, enterDemo } = useAuth();
+  const { error, googleStatus, loginWithPassword, loginWithGoogle, retrySession, enterDemo } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -23,6 +23,21 @@ export function LoginScreen() {
       setSubmitting(false);
     }
   };
+
+  const startGoogleLogin = async () => {
+    try {
+      await loginWithGoogle();
+    } catch {
+      // The provider exposes a localized error message.
+    }
+  };
+
+  const googleLabel = {
+    idle: "Googleで続行",
+    opening: "認証を準備しています…",
+    waiting: "ブラウザで認証してください",
+    exchanging: "セッションを作成しています…",
+  }[googleStatus];
 
   return (
     <main className="login-screen">
@@ -56,14 +71,14 @@ export function LoginScreen() {
               <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="15文字以上" minLength={15} maxLength={128} required />
             </label>
             {error && <div className="login-error" role="alert"><span>{error}</span><button type="button" onClick={() => void retrySession()}>再試行</button></div>}
-            <button className="login-primary" type="submit" disabled={submitting || password.length < 15}>
+            <button className="login-primary" type="submit" disabled={submitting || googleStatus !== "idle" || password.length < 15}>
               <span>{submitting ? "接続しています…" : "ログイン"}</span><ArrowRight size={19} />
             </button>
           </form>
 
           <div className="login-divider"><span>または</span></div>
-          <button className="login-provider" type="button" disabled title="Google OpenID Connectは次のProtocol更新後に有効化します">
-            <GoogleLogo size={20} /><span>Googleで続行</span><small>準備中</small>
+          <button className="login-provider" type="button" disabled={submitting || googleStatus !== "idle"} onClick={() => void startGoogleLogin()}>
+            <GoogleLogo size={20} /><span>{googleLabel}</span><small>システムブラウザ</small>
           </button>
           {import.meta.env.DEV && <button className="login-demo" type="button" onClick={enterDemo}>デモデータでUIを確認</button>}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPkceChallenge, createPkcePair } from "./pkce";
+import { createOAuthState, createPkceChallenge, createPkcePair } from "./pkce";
 
 describe("PKCE S256", () => {
   it("matches the RFC 7636 challenge vector", async () => {
@@ -12,5 +12,12 @@ describe("PKCE S256", () => {
     expect(pair.method).toBe("S256");
     expect(pair.verifier.length).toBeGreaterThanOrEqual(43);
     expect(pair.challenge).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("creates an unpredictable URL-safe OAuth state", () => {
+    const first = createOAuthState();
+    const second = createOAuthState();
+    expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(second).not.toBe(first);
   });
 });

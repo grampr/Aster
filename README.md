@@ -4,7 +4,7 @@ Aster は、リアルタイムなチャットと音声通話、セルフホス�
 
 > [!IMPORTANT]
 > Aster は設計初期段階にあります。
-> 現在はTauriデスクトップシェルと認証クライアントを実行できますが、安定版APIやGoogle OpenID Connectとの接続は開発中です。
+> 現在はTauriデスクトップシェルと認証クライアントを実行できますが、安定版APIは開発中です。
 
 ## 目指すもの
 
@@ -111,6 +111,8 @@ npm run generate:protocol
 ```
 
 デスクトップ版はAccess Tokenをメモリにだけ保持し、Refresh TokenだけをRust経由でmacOS Keychain、Windows Credential Manager、Linux Secret Serviceへ保存します。ブラウザプレビューではRefresh Tokenを永続化しません。
+
+GoogleログインはシステムブラウザでAuthorization Code + PKCE S256を開始し、`aster://auth/callback`でデスクトップアプリへ戻ります。Googleの資格情報はデスクトップへ渡さず、Aster ServerがProviderを検証した後にProvider非依存のAster Session Tokenを発行します。PKCE Verifierはメモリだけに保持するため、ブラウザ認証中にアプリを終了した場合はログインをやり直してください。
 
 ## UI カスタマイズ
 

@@ -7,6 +7,10 @@
     "core:default",
     "deep-link:default",
     {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://accounts.google.com/*" }]
+    },
+    {
       "identifier": "http:default",
       "allow": [
         { "url": "https://*" },

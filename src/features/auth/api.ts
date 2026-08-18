@@ -1,6 +1,9 @@
 import type {
   ApiErrorBody,
   LoginPasswordRequest,
+  GoogleAuthorizationRequest,
+  GoogleAuthorizationResponse,
+  GoogleExchangeRequest,
   LogoutRequest,
   RefreshSessionRequest,
   SessionTokenResponse,
@@ -49,6 +52,20 @@ export class AsterApiClient {
 
   loginWithPassword(request: LoginPasswordRequest): Promise<SessionTokenResponse> {
     return this.request("/auth/password/login", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  beginGoogleAuthorization(request: GoogleAuthorizationRequest): Promise<GoogleAuthorizationResponse> {
+    return this.request("/auth/google/authorize", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  exchangeGoogleAuthorization(request: GoogleExchangeRequest): Promise<SessionTokenResponse> {
+    return this.request("/auth/google/exchange", {
       method: "POST",
       body: JSON.stringify(request),
     });
