@@ -11,6 +11,9 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     allowedHosts: ["terminal.local"],
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
     warmup: {
       clientFiles: ["./src/main.tsx"],
     },

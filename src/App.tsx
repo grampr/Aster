@@ -6,11 +6,14 @@ import {
   MagnifyingGlass, Microphone, MicrophoneSlash, PaperPlaneTilt, Plus,
   PushPin, SlidersHorizontal, Smiley, SpeakerHigh, TextAa, UserPlus,
   Users, Waveform, X, ThumbsUp, PhoneDisconnect, ArrowBendUpLeft,
+  SignOut,
 } from "@phosphor-icons/react";
 import {
   assets, channels, guilds, initialMessages, members,
   type ChatMessage, type Member,
 } from "./data";
+import { AuthGate } from "./features/auth/AuthGate";
+import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
 
 type Density = "compact" | "comfortable";
 
@@ -300,14 +303,20 @@ function MessageGroup({ message }: { message: ChatMessage }) {
   );
 }
 
-function MemberPanel({ onClose }: { onClose: () => void }) {
+function MemberPanel({ onClose, onLogout }: { onClose: () => void; onLogout: () => void }) {
   const [query, setQuery] = useState("");
   const filteredMembers = members.filter((member) => member.name.toLowerCase().includes(query.toLowerCase()));
   const groups = ["運営", "モデレーター", "メンバー"] as const;
 
   return (
     <aside className="member-panel">
-      <header className="panel-title member-title"><strong>メンバー <span>— 28</span></strong><IconButton label="メンバーリストを閉じる" onClick={onClose}><X size={21} /></IconButton></header>
+      <header className="panel-title member-title">
+        <strong>メンバー <span>— 28</span></strong>
+        <div className="member-title__actions">
+          <IconButton label="ログアウト" onClick={onLogout}><SignOut size={20} /></IconButton>
+          <IconButton label="メンバーリストを閉じる" onClick={onClose}><X size={21} /></IconButton>
+        </div>
+      </header>
       <div className="member-search-row">
         <label className="search-field"><MagnifyingGlass size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="メンバーを検索" aria-label="メンバーを検索" /></label>
         <IconButton label="メンバーを絞り込む"><FunnelSimple size={20} /></IconButton>
@@ -334,7 +343,8 @@ function MemberPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function App() {
+function DesktopWorkspace() {
+  const { logout } = useAuth();
   const [activeGuild, setActiveGuild] = useState("aster");
   const [selectedChannel, setSelectedChannel] = useState("event");
   const [settingsOpen, setSettingsOpen] = useState(true);
@@ -394,8 +404,18 @@ export function App() {
         onSend={sendMessage}
       />
       {membersVisible && <ResizeHandle label="メンバーリスト幅を変更" onPointerDown={beginResize("member")} />}
-      {membersVisible && <MemberPanel onClose={() => setMembersVisible(false)} />}
+      {membersVisible && <MemberPanel onClose={() => setMembersVisible(false)} onLogout={() => void logout()} />}
       {!membersVisible && <button className="restore-members" type="button" onClick={() => setMembersVisible(true)}><Users size={19} />メンバーを表示</button>}
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <AuthGate>
+        <DesktopWorkspace />
+      </AuthGate>
+    </AuthProvider>
   );
 }

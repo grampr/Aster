@@ -16,3 +16,11 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Use design tokens and working controls for accent color, message density, column widths, and member-list visibility.
 - Use Phosphor icons and real raster assets; do not substitute emoji, text glyphs, CSS art, or handcrafted SVGs for interface assets.
 - Collapse the member list first and then the channel list while preserving chat composition and guild navigation.
+
+## Authentication boundaries
+
+- Treat `Aster-protocol` OpenAPI as the source of truth and regenerate `src/generated/aster-protocol.ts` instead of hand-editing contract types.
+- Persist only the refresh token, through Rust and the OS credential store. Keep access tokens in React memory.
+- Rotate the refresh token whenever a session is restored or refreshed, and clear local credentials on an invalid refresh response.
+- External identity providers prove identity to Aster Server; the desktop client must only receive provider-neutral Aster session tokens.
+- Google authentication must use Authorization Code + PKCE S256 and the `aster://` deep-link boundary once the Protocol endpoints are defined.
