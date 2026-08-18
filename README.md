@@ -4,7 +4,7 @@ Aster は、リアルタイムなチャットと音声通話、セルフホス�
 
 > [!IMPORTANT]
 > Aster は設計初期段階にあります。
-> 現在はデスクトップ UI プロトタイプを実行できますが、Tauri 統合や安定版 API への接続は未実装です。
+> 現在はTauriデスクトップシェルと認証クライアントを実行できますが、安定版APIやGoogle OpenID Connectとの接続は開発中です。
 
 ## 目指すもの
 
@@ -78,15 +78,39 @@ npm install
 npm run dev
 ```
 
+Tauriデスクトップアプリとして起動する場合は、TauriのOS別依存関係とRustを用意して次を実行します。
+
+```bash
+npm run tauri:dev
+```
+
 型チェック、本番ビルド、配信用 Worker のテストは次のコマンドで実行できます。
 
 ```bash
 npm run typecheck
+npm test
 npm run build
 npm run test:sites
+npm run tauri:check
 ```
 
 現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージ送信、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
+
+### API接続先
+
+REST APIの接続先は`VITE_ASTER_API_URL`で指定します。未指定時は`http://localhost:8080`を使用し、Protocolの`/api/v1`を自動的に付加します。
+
+```bash
+VITE_ASTER_API_URL=https://aster.example.com npm run tauri:dev
+```
+
+Protocol型を更新する場合は、`Aster-protocol`のマージ済みOpenAPIから生成物を更新します。
+
+```bash
+npm run generate:protocol
+```
+
+デスクトップ版はAccess Tokenをメモリにだけ保持し、Refresh TokenだけをRust経由でmacOS Keychain、Windows Credential Manager、Linux Secret Serviceへ保存します。ブラウザプレビューではRefresh Tokenを永続化しません。
 
 ## UI カスタマイズ
 
