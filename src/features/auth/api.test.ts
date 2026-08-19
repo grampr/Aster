@@ -82,6 +82,57 @@ describe("AsterApiClient", () => {
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ content: "hello" });
   });
 
+  it("starts Google Authorization Code + PKCE using the Protocol contract", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({
+        authorization_url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=aster",
+        expires_in: 300,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+
+    await client.beginGoogleAuthorization({
+      redirect_uri: "aster://auth/callback",
+      code_challenge: "challenge",
+      code_challenge_method: "S256",
+      client_state: "state",
+    });
+
+    expect(calls[0].url).toBe("https://aster.example/api/v1/auth/google/authorize");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      redirect_uri: "aster://auth/callback",
+      code_challenge: "challenge",
+      code_challenge_method: "S256",
+      client_state: "state",
+    });
+  });
+
+  it("exchanges only the one-time code and PKCE verifier for an Aster session", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({
+        access_token: "access",
+        refresh_token: "refresh",
+        token_type: "Bearer",
+        expires_in: 900,
+        refresh_expires_in: 2592000,
+        session_id: "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+
+    await client.exchangeGoogleAuthorization({ exchange_code: "one-time", code_verifier: "verifier" });
+
+    expect(calls[0].url).toBe("https://aster.example/api/v1/auth/google/exchange");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      exchange_code: "one-time",
+      code_verifier: "verifier",
+    });
+  });
+
   it("preserves the machine-readable Protocol error", async () => {
     const transport: FetchTransport = async () => new Response(JSON.stringify({
       code: "INVALID_CREDENTIALS",
