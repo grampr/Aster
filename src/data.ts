@@ -15,7 +15,7 @@ export type Member = {
 };
 
 export type ChatMessage = {
-  id: number;
+  id: string | number;
   author: string;
   avatar: string;
   time: string;

@@ -9,15 +9,18 @@ import {
   SignOut,
 } from "@phosphor-icons/react";
 import {
-  assets, channels, guilds, initialMessages, members,
-  type ChatMessage, type Member,
+  assets, channels as demoChannels, guilds as demoGuilds, initialMessages, members,
+  type Channel as ViewChannel, type ChatMessage, type Member,
 } from "./data";
 import { AuthGate } from "./features/auth/AuthGate";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
+import { useChatWorkspace } from "./features/chat/useChatWorkspace";
 
 type Density = "compact" | "comfortable";
 
 const accents = ["#1687f8", "#24b47e", "#7557e8", "#ff8a34", "#ec3e78", "#7c8798"];
+
+type ViewGuild = { id: string; name: string; image: string };
 
 function Avatar({ src, size = "medium", status }: { src: string; size?: "small" | "medium" | "large"; status?: Member["status"] }) {
   return (
@@ -36,7 +39,7 @@ function IconButton({ label, active, onClick, children, className = "" }: { labe
   );
 }
 
-function GuildRail({ activeGuild, onSelect }: { activeGuild: string; onSelect: (id: string) => void }) {
+function GuildRail({ guilds, activeGuild, onSelect }: { guilds: ViewGuild[]; activeGuild: string | null; onSelect: (id: string) => void }) {
   return (
     <nav className="guild-rail" aria-label="コミュニティ">
       <div className="guild-list">
@@ -60,7 +63,13 @@ function GuildRail({ activeGuild, onSelect }: { activeGuild: string; onSelect: (
   );
 }
 
-function ChannelPanel({ guildName, selectedChannel, onSelect }: { guildName: string; selectedChannel: string; onSelect: (id: string) => void }) {
+function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect }: {
+  channels: ViewChannel[];
+  guildName: string;
+  selectedChannel: string | null;
+  loading: boolean;
+  onSelect: (id: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [voiceExpanded, setVoiceExpanded] = useState(true);
   const filtered = channels.filter((channel) => channel.label.toLowerCase().includes(query.toLowerCase()));
@@ -89,6 +98,8 @@ function ChannelPanel({ guildName, selectedChannel, onSelect }: { guildName: str
             <IconButton label="テキストチャンネルを追加"><Plus size={17} /></IconButton>
           </div>
           <div className="channel-items">
+            {loading && <p className="panel-inline-state">読み込み中…</p>}
+            {!loading && textChannels.length === 0 && <p className="panel-inline-state">テキストチャンネルはありません</p>}
             {textChannels.map((channel) => (
               <button
                 type="button"
@@ -221,21 +232,37 @@ function AppearancePopover({ density, onDensity, accent, onAccent, membersVisibl
   );
 }
 
-function ChatPanel({ channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend }: {
+function ChatPanel({
+  channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend,
+  loading = false, sending = false, error = null, enabled = true,
+  hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry,
+}: {
   channelLabel: string;
   density: Density;
   settingsOpen: boolean;
   onSettings: () => void;
   appearance: ComponentProps<typeof AppearancePopover>;
   messages: ChatMessage[];
-  onSend: (message: string) => void;
+  onSend: (message: string) => Promise<void>;
+  loading?: boolean;
+  sending?: boolean;
+  error?: string | null;
+  enabled?: boolean;
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  onLoadOlder?: () => Promise<void>;
+  onRetry?: () => void;
 }) {
   const [draft, setDraft] = useState("");
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!draft.trim()) return;
-    onSend(draft.trim());
-    setDraft("");
+    try {
+      await onSend(draft.trim());
+      setDraft("");
+    } catch {
+      // Workspace error state keeps the draft available for retry.
+    }
   };
 
   return (
@@ -252,11 +279,16 @@ function ChatPanel({ channelLabel, density, settingsOpen, onSettings, appearance
         {settingsOpen && <AppearancePopover {...appearance} />}
       </header>
       <div className="message-scroll">
-        <div className="date-divider"><span>2026年8月17日（月）</span></div>
+        {error && <div className="workspace-notice is-error"><span>{error}</span>{onRetry && <button type="button" onClick={onRetry}>再試行</button>}</div>}
+        {hasOlderMessages && onLoadOlder && <button className="load-older" type="button" disabled={loadingOlderMessages} onClick={() => void onLoadOlder()}>{loadingOlderMessages ? "読み込み中…" : "以前のメッセージを読み込む"}</button>}
+        {loading && <p className="message-state">メッセージを読み込み中…</p>}
+        {!loading && enabled && messages.length === 0 && <p className="message-state">まだメッセージはありません。最初のメッセージを送ってみましょう。</p>}
+        {!loading && !enabled && <p className="message-state">テキストチャンネルを選択してください。</p>}
+        {messages.length > 0 && <div className="date-divider"><span>メッセージ</span></div>}
         {messages.map((message) => <MessageGroup key={message.id} message={message} />)}
       </div>
       <form className="composer" onSubmit={submit}>
-        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={`#${channelLabel} へメッセージを送信`} rows={1} aria-label="メッセージ" />
+        <textarea disabled={!enabled || sending} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={enabled ? `#${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
         <div className="composer-actions">
           <div>
             <IconButton label="ファイルを追加"><Plus size={20} /></IconButton>
@@ -265,7 +297,7 @@ function ChatPanel({ channelLabel, density, settingsOpen, onSettings, appearance
             <IconButton label="メンション"><At size={20} /></IconButton>
             <IconButton label="画像"><ImageSquare size={20} /></IconButton>
           </div>
-          <button type="submit" className="send-button" disabled={!draft.trim()} aria-label="送信"><PaperPlaneTilt size={24} weight="fill" /></button>
+          <button type="submit" className="send-button" disabled={!enabled || sending || !draft.trim()} aria-label="送信"><PaperPlaneTilt size={24} weight="fill" /></button>
         </div>
       </form>
     </main>
@@ -344,19 +376,36 @@ function MemberPanel({ onClose, onLogout }: { onClose: () => void; onLogout: () 
 }
 
 function DesktopWorkspace() {
-  const { logout } = useAuth();
-  const [activeGuild, setActiveGuild] = useState("aster");
-  const [selectedChannel, setSelectedChannel] = useState("event");
+  const { logout, accessToken, user } = useAuth();
+  const workspace = useChatWorkspace(accessToken);
+  const isDemo = accessToken === null;
+  const [demoActiveGuild, setDemoActiveGuild] = useState("aster");
+  const [demoSelectedChannel, setDemoSelectedChannel] = useState("event");
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [density, setDensity] = useState<Density>("compact");
   const [accent, setAccent] = useState(accents[0]);
   const [membersVisible, setMembersVisible] = useState(true);
   const [channelWidth, setChannelWidth] = useState(330);
   const [memberWidth, setMemberWidth] = useState(286);
-  const [messages, setMessages] = useState(initialMessages);
+  const [demoMessages, setDemoMessages] = useState(initialMessages);
 
-  const guildName = guilds.find((guild) => guild.id === activeGuild)?.name ?? "星屑コミュニティ";
-  const channelLabel = channels.find((channel) => channel.id === selectedChannel)?.label ?? "イベント企画";
+  const visibleGuilds: ViewGuild[] = isDemo ? demoGuilds : workspace.guilds.map((guild) => ({
+    id: guild.id, name: guild.name, image: guild.icon_url ?? assets.logo,
+  }));
+  const visibleChannels: ViewChannel[] = isDemo ? demoChannels : workspace.channels.map((channel) => ({
+    id: channel.id, label: channel.name, kind: channel.type === "TEXT" ? "text" : "voice",
+  }));
+  const activeGuild = isDemo ? demoActiveGuild : workspace.activeGuildId;
+  const selectedChannel = isDemo ? demoSelectedChannel : workspace.selectedChannelId;
+  const visibleMessages: ChatMessage[] = isDemo ? demoMessages : workspace.messages.map((message) => ({
+    id: message.id,
+    author: message.author.display_name,
+    avatar: message.author.avatar_url ?? assets.mountain,
+    time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(message.created_at)),
+    lines: [message.content],
+  }));
+  const guildName = visibleGuilds.find((guild) => guild.id === activeGuild)?.name ?? (workspace.loadingGuilds ? "読み込み中…" : "コミュニティがありません");
+  const channelLabel = visibleChannels.find((channel) => channel.id === selectedChannel)?.label ?? "チャンネル未選択";
 
   const beginResize = (kind: "channel" | "member") => (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -381,18 +430,18 @@ function DesktopWorkspace() {
     "--accent": accent,
   } as CSSProperties), [channelWidth, memberWidth, accent]);
 
-  const sendMessage = (body: string) => {
-    setMessages((current) => [...current, {
-      id: Date.now(), author: "Aster", avatar: assets.mountain,
-      time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()),
-      lines: [body],
+  const sendMessage = async (body: string) => {
+    if (!isDemo) return workspace.sendMessage(body);
+    setDemoMessages((current) => [...current, {
+      id: Date.now(), author: user?.display_name ?? "Aster", avatar: user?.avatar_url ?? assets.mountain,
+      time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()), lines: [body],
     }]);
   };
 
   return (
     <div className={`app-shell ${membersVisible ? "" : "without-members"}`} style={shellStyle}>
-      <GuildRail activeGuild={activeGuild} onSelect={setActiveGuild} />
-      <ChannelPanel guildName={guildName} selectedChannel={selectedChannel} onSelect={setSelectedChannel} />
+      <GuildRail guilds={visibleGuilds} activeGuild={activeGuild} onSelect={isDemo ? setDemoActiveGuild : workspace.selectGuild} />
+      <ChannelPanel channels={visibleChannels} guildName={guildName} selectedChannel={selectedChannel} loading={!isDemo && workspace.loadingChannels} onSelect={isDemo ? setDemoSelectedChannel : workspace.selectChannel} />
       <ResizeHandle label="チャンネル幅を変更" onPointerDown={beginResize("channel")} />
       <ChatPanel
         channelLabel={channelLabel}
@@ -400,8 +449,16 @@ function DesktopWorkspace() {
         settingsOpen={settingsOpen}
         onSettings={() => setSettingsOpen((value) => !value)}
         appearance={{ density, onDensity: setDensity, accent, onAccent: setAccent, membersVisible, onMembersVisible: setMembersVisible, channelWidth, onChannelWidth: setChannelWidth, onClose: () => setSettingsOpen(false) }}
-        messages={messages}
+        messages={visibleMessages}
         onSend={sendMessage}
+        loading={!isDemo && workspace.loadingMessages}
+        sending={!isDemo && workspace.sending}
+        error={isDemo ? null : workspace.error}
+        enabled={isDemo || selectedChannel !== null}
+        hasOlderMessages={!isDemo && workspace.hasOlderMessages}
+        loadingOlderMessages={!isDemo && workspace.loadingOlderMessages}
+        onLoadOlder={workspace.loadOlderMessages}
+        onRetry={workspace.retry}
       />
       {membersVisible && <ResizeHandle label="メンバーリスト幅を変更" onPointerDown={beginResize("member")} />}
       {membersVisible && <MemberPanel onClose={() => setMembersVisible(false)} onLogout={() => void logout()} />}

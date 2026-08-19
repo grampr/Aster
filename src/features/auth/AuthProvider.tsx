@@ -134,11 +134,12 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
     status: state.status,
     user: state.user,
     error: state.error,
+    accessToken: state.session?.access_token ?? null,
     loginWithPassword,
     logout,
     retrySession: restoreSession,
     enterDemo,
-  }), [enterDemo, loginWithPassword, logout, restoreSession, state.error, state.status, state.user]);
+  }), [enterDemo, loginWithPassword, logout, restoreSession, state.error, state.session?.access_token, state.status, state.user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
