@@ -49,6 +49,39 @@ describe("AsterApiClient", () => {
     expect(headers.get("Authorization")).toBe("Bearer secret-access-token");
   });
 
+  it("encodes list path and query parameters and sends authorization", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ items: [], page: { has_more: false, next_cursor: null } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    const client = new AsterApiClient("https://aster.example", transport);
+    await client.listGuildChannels("guild/id", "secret access", "cursor /?", 25);
+
+    expect(calls[0].url).toBe("https://aster.example/api/v1/guilds/guild%2Fid/channels?cursor=cursor+%2F%3F&limit=25");
+    expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer secret access");
+  });
+
+  it("posts a channel message with the access token and JSON body", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({}), { status: 201, headers: { "Content-Type": "application/json" } });
+    };
+
+    const client = new AsterApiClient("https://aster.example", transport);
+    await client.createChannelMessage("channel/id", { content: "hello" }, "secret-access-token");
+
+    expect(calls[0].url).toBe("https://aster.example/api/v1/channels/channel%2Fid/messages");
+    expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer secret-access-token");
+    expect(new Headers(calls[0].init?.headers).get("Content-Type")).toBe("application/json");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ content: "hello" });
+  });
+
   it("starts Google Authorization Code + PKCE using the Protocol contract", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const transport: FetchTransport = async (input, init) => {

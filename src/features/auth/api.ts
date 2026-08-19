@@ -1,10 +1,15 @@
 import type {
   ApiErrorBody,
+  ChannelList,
+  CreateMessageRequest,
+  GuildList,
   LoginPasswordRequest,
   GoogleAuthorizationRequest,
   GoogleAuthorizationResponse,
   GoogleExchangeRequest,
   LogoutRequest,
+  Message,
+  MessageList,
   RefreshSessionRequest,
   SessionTokenResponse,
   UserSelf,
@@ -83,6 +88,29 @@ export class AsterApiClient {
     return this.request("/users/@me", { method: "GET" }, accessToken);
   }
 
+  listGuilds(accessToken: string, cursor?: string, limit?: number): Promise<GuildList> {
+    return this.request(`/guilds${queryString({ cursor, limit })}`, { method: "GET" }, accessToken);
+  }
+
+  listGuildChannels(guildId: string, accessToken: string, cursor?: string, limit?: number): Promise<ChannelList> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/channels${queryString({ cursor, limit })}`, {
+      method: "GET",
+    }, accessToken);
+  }
+
+  listChannelMessages(channelId: string, accessToken: string, cursor?: string, limit?: number): Promise<MessageList> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/messages${queryString({ cursor, limit })}`, {
+      method: "GET",
+    }, accessToken);
+  }
+
+  createChannelMessage(channelId: string, body: CreateMessageRequest, accessToken: string): Promise<Message> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, accessToken);
+  }
+
   async logout(accessToken: string, refreshToken: string): Promise<void> {
     const request: LogoutRequest = { refresh_token: refreshToken };
     await this.request<void>("/auth/logout", {
@@ -122,4 +150,12 @@ export class AsterApiClient {
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
+}
+
+function queryString(values: { cursor?: string; limit?: number }): string {
+  const query = new URLSearchParams();
+  if (values.cursor !== undefined) query.set("cursor", values.cursor);
+  if (values.limit !== undefined) query.set("limit", String(values.limit));
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
 }

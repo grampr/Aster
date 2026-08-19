@@ -183,6 +183,201 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/guilds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 認証済みUserが参加しているGuildを取得する
+         * @description ClientのGuild一覧を構成するため、認証済みUserから参照できるGuildだけを返します。
+         *     Cursorがない最初のRequestではServerが定める安定した順序の先頭から取得します。
+         */
+        get: operations["listCurrentUserGuilds"];
+        put?: never;
+        /**
+         * Guildを作成する
+         * @description 認証済みUserをOwnerとするGuildを作成します。
+         *     Default Channelなどの初期Resourceを自動作成するかはServer設定に従います。
+         */
+        post: operations["createGuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/guilds/{guild_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Guildを取得する
+         * @description 認証済みUserが参照できるGuildの現在の設定を返します。
+         */
+        get: operations["getGuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Guildを削除する
+         * @description Guildを削除できる権限を持つUserだけが実行できます。削除はGuild配下のResourceにも影響します。
+         */
+        delete: operations["deleteGuild"];
+        options?: never;
+        head?: never;
+        /**
+         * Guildの設定を変更する
+         * @description Guild設定を変更できる権限を持つUserだけが実行できます。指定していないFieldは変更しません。
+         */
+        patch: operations["updateGuild"];
+        trace?: never;
+    };
+    "/guilds/{guild_id}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * GuildのChannelを取得する
+         * @description 認証済みUserが参照できるChannelをpositionの昇順で返します。
+         */
+        get: operations["listGuildChannels"];
+        put?: never;
+        /**
+         * GuildにChannelを作成する
+         * @description Channelを管理できる権限を持つUserだけが実行できます。positionはServerが末尾になるよう割り当てます。
+         */
+        post: operations["createGuildChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Channelを取得する
+         * @description 認証済みUserが参照できるChannelの現在の設定を返します。
+         */
+        get: operations["getChannel"];
+        put?: never;
+        post?: never;
+        /**
+         * Channelを削除する
+         * @description Channelを管理できる権限を持つUserだけが実行できます。Text Channelの削除は配下のMessageにも影響します。
+         */
+        delete: operations["deleteChannel"];
+        options?: never;
+        head?: never;
+        /**
+         * Channelの設定を変更する
+         * @description Channelを管理できる権限を持つUserだけが実行できます。Channel Typeは作成後に変更できません。
+         */
+        patch: operations["updateChannel"];
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Text ChannelのMessageを取得する
+         * @description 認証済みUserが参照できるMessageをcreated_atとidの新しい順で返します。
+         *     next_cursorは現在のPageより古いMessageを取得するために使用します。
+         *     Voice Channelを指定した場合はResourceが見つからないものとして扱います。
+         */
+        get: operations["listChannelMessages"];
+        put?: never;
+        /**
+         * Text ChannelにMessageを投稿する
+         * @description Messageを送信できる権限を持つUserをauthorとして、新しいMessageを作成します。
+         */
+        post: operations["createChannelMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Text ChannelのMessageを取得する
+         * @description Messageが指定したText Channelに属し、認証済みUserから参照できる場合だけ返します。
+         */
+        get: operations["getChannelMessage"];
+        put?: never;
+        post?: never;
+        /**
+         * Messageを削除する
+         * @description Messageのauthor、またはMessageを管理できる権限を持つUserだけが実行できます。
+         */
+        delete: operations["deleteChannelMessage"];
+        options?: never;
+        head?: never;
+        /**
+         * 自分のMessage本文を変更する
+         * @description Messageのauthorだけが本文を変更できます。変更時にedited_atをServer時刻へ更新します。
+         */
+        patch: operations["updateChannelMessage"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -221,6 +416,99 @@ export interface components {
          * @enum {string}
          */
         AuthenticationMethod: "PASSWORD" | "GOOGLE";
+        /**
+         * Channel
+         * @description Guild内のText ChannelまたはVoice Channelです。
+         * @example {
+         *       "id": "0198b8f1-3e7f-7d56-a14f-a3f40304d2b1",
+         *       "guild_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0",
+         *       "type": "TEXT",
+         *       "name": "イベント企画",
+         *       "topic": "次回イベントの日程と内容を相談します",
+         *       "position": 2,
+         *       "created_at": "2026-08-17T06:05:00Z"
+         *     }
+         */
+        Channel: {
+            id: components["schemas"]["UUID"];
+            /** @description Channelが属するGuild IDです。 */
+            guild_id: components["schemas"]["UUID"];
+            type: components["schemas"]["ChannelType"];
+            name: string;
+            /** @description Text Channelの説明です。未設定またはVoice Channelの場合はnullです。 */
+            topic: string | null;
+            /** @description 同じGuild内での表示順です。小さい値を先に表示します。 */
+            position: number;
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * ChannelList
+         * @description Guild内のChannelをpositionの昇順で返すPageです。
+         * @example {
+         *       "items": [
+         *         {
+         *           "id": "0198b8f1-3e7f-7d56-a14f-a3f40304d2b1",
+         *           "guild_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0",
+         *           "type": "TEXT",
+         *           "name": "イベント企画",
+         *           "topic": "次回イベントの日程と内容を相談します",
+         *           "position": 2,
+         *           "created_at": "2026-08-17T06:05:00Z"
+         *         }
+         *       ],
+         *       "page": {
+         *         "has_more": false,
+         *         "next_cursor": null
+         *       }
+         *     }
+         */
+        ChannelList: {
+            items: components["schemas"]["Channel"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * ChannelType
+         * @description Channelで扱うCommunicationの種類です。
+         * @example TEXT
+         * @enum {string}
+         */
+        ChannelType: "TEXT" | "VOICE";
+        /**
+         * CreateChannelRequest
+         * @description Guild内に新しいChannelを作成するときの設定です。
+         * @example {
+         *       "type": "TEXT",
+         *       "name": "イベント企画",
+         *       "topic": "次回イベントの日程と内容を相談します"
+         *     }
+         */
+        CreateChannelRequest: {
+            type: components["schemas"]["ChannelType"];
+            name: string;
+            topic?: string;
+        };
+        /**
+         * CreateGuildRequest
+         * @description 新しいGuildを作成するときの設定です。
+         * @example {
+         *       "name": "星屑コミュニティ",
+         *       "description": "創作とイベント企画のためのコミュニティ"
+         *     }
+         */
+        CreateGuildRequest: {
+            name: string;
+            description?: string;
+        };
+        /**
+         * CreateMessageRequest
+         * @description Text Channelへ投稿するMessage本文です。
+         * @example {
+         *       "content": "10月24日で進める方向でよいでしょうか？"
+         *     }
+         */
+        CreateMessageRequest: {
+            content: string;
+        };
         /**
          * Email
          * Format: email
@@ -327,6 +615,53 @@ export interface components {
             code_verifier: components["schemas"]["PkceCodeVerifier"];
         };
         /**
+         * Guild
+         * @description Userが参加し、ChannelをまとめるCommunityです。
+         * @example {
+         *       "id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0",
+         *       "name": "星屑コミュニティ",
+         *       "description": "創作とイベント企画のためのコミュニティ",
+         *       "icon_url": "https://cdn.example.com/guild-icons/aster.png",
+         *       "owner_id": "0198b8ef-1c5d-7b34-892e-81d2e1e2b090",
+         *       "created_at": "2026-08-17T06:00:00Z"
+         *     }
+         */
+        Guild: {
+            id: components["schemas"]["UUID"];
+            name: string;
+            /** @description Guildの概要です。未設定の場合はnullです。 */
+            description: string | null;
+            /** @description Guild IconのURLです。未設定の場合はnullです。 */
+            icon_url: string | null;
+            /** @description Guildを所有するUser IDです。 */
+            owner_id: components["schemas"]["UUID"];
+            created_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * GuildList
+         * @description 認証済みUserが参加しているGuildのPageです。
+         * @example {
+         *       "items": [
+         *         {
+         *           "id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0",
+         *           "name": "星屑コミュニティ",
+         *           "description": "創作とイベント企画のためのコミュニティ",
+         *           "icon_url": "https://cdn.example.com/guild-icons/aster.png",
+         *           "owner_id": "0198b8ef-1c5d-7b34-892e-81d2e1e2b090",
+         *           "created_at": "2026-08-17T06:00:00Z"
+         *         }
+         *       ],
+         *       "page": {
+         *         "has_more": false,
+         *         "next_cursor": null
+         *       }
+         *     }
+         */
+        GuildList: {
+            items: components["schemas"]["Guild"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
          * LoginPasswordRequest
          * @description Email Address と Password で Aster Session を作成する Request です。
          * @example {
@@ -347,6 +682,61 @@ export interface components {
          */
         LogoutRequest: {
             refresh_token: components["schemas"]["RefreshToken"];
+        };
+        /**
+         * Message
+         * @description Text Channelに投稿されたMessageです。
+         * @example {
+         *       "id": "0198b8f2-4f80-7e67-b250-b4051415e3c2",
+         *       "channel_id": "0198b8f1-3e7f-7d56-a14f-a3f40304d2b1",
+         *       "author": {
+         *         "id": "0198b8ef-1c5d-7b34-892e-81d2e1e2b090",
+         *         "display_name": "Alice",
+         *         "avatar_url": "https://cdn.example.com/avatars/alice.png"
+         *       },
+         *       "content": "10月24日で進める方向でよいでしょうか？",
+         *       "created_at": "2026-08-17T06:12:00Z",
+         *       "edited_at": null
+         *     }
+         */
+        Message: {
+            id: components["schemas"]["UUID"];
+            /** @description Messageが属するText Channel IDです。 */
+            channel_id: components["schemas"]["UUID"];
+            author: components["schemas"]["UserSummary"];
+            /** @description UTF-8のMessage本文です。 */
+            content: string;
+            created_at: components["schemas"]["Timestamp"];
+            /** @description 最後に本文を編集した時刻です。未編集の場合はnullです。 */
+            edited_at: components["schemas"]["Timestamp"] | null;
+        };
+        /**
+         * MessageList
+         * @description Text ChannelのMessageを新しい順で返すPageです。
+         * @example {
+         *       "items": [
+         *         {
+         *           "id": "0198b8f2-4f80-7e67-b250-b4051415e3c2",
+         *           "channel_id": "0198b8f1-3e7f-7d56-a14f-a3f40304d2b1",
+         *           "author": {
+         *             "id": "0198b8ef-1c5d-7b34-892e-81d2e1e2b090",
+         *             "display_name": "Alice",
+         *             "avatar_url": "https://cdn.example.com/avatars/alice.png"
+         *           },
+         *           "content": "10月24日で進める方向でよいでしょうか？",
+         *           "created_at": "2026-08-17T06:12:00Z",
+         *           "edited_at": null
+         *         }
+         *       ],
+         *       "page": {
+         *         "has_more": true,
+         *         "next_cursor": "eyJpZCI6IjAxOThiOGYyLTRmODAtN2U2Ny1iMjUwLWI0MDUxNDE1ZTNjMiJ9"
+         *       }
+         *     }
+         */
+        MessageList: {
+            items: components["schemas"]["Message"][];
+            page: components["schemas"]["PageInfo"];
         };
         /**
          * PageInfo
@@ -489,6 +879,43 @@ export interface components {
          */
         Timestamp: string;
         /**
+         * UpdateChannelRequest
+         * @description Channelの変更するFieldだけを指定します。
+         * @example {
+         *       "name": "秋のイベント企画",
+         *       "position": 3
+         *     }
+         */
+        UpdateChannelRequest: {
+            name?: string;
+            /** @description nullを指定するとTopicを削除します。 */
+            topic?: string | null;
+            position?: number;
+        };
+        /**
+         * UpdateGuildRequest
+         * @description Guildの変更するFieldだけを指定します。
+         * @example {
+         *       "name": "星屑クリエイターズ",
+         *       "description": null
+         *     }
+         */
+        UpdateGuildRequest: {
+            name?: string;
+            /** @description nullを指定すると概要を削除します。 */
+            description?: string | null;
+        };
+        /**
+         * UpdateMessageRequest
+         * @description 自分が投稿したMessageの本文を置き換えます。
+         * @example {
+         *       "content": "10月24日（土）で進める方向でよいでしょうか？"
+         *     }
+         */
+        UpdateMessageRequest: {
+            content: string;
+        };
+        /**
          * UUID
          * Format: uuid
          * @description UUIDv7 を使用する Resource Identifier です。
@@ -521,6 +948,21 @@ export interface components {
             /** @description Account に Link されている認証方法です。 */
             authentication_methods: components["schemas"]["AuthenticationMethod"][];
             created_at: components["schemas"]["Timestamp"];
+        };
+        /**
+         * UserSummary
+         * @description Messageなどで表示するUserの公開情報です。
+         * @example {
+         *       "id": "0198b8ef-1c5d-7b34-892e-81d2e1e2b090",
+         *       "display_name": "Alice",
+         *       "avatar_url": "https://cdn.example.com/avatars/alice.png"
+         *     }
+         */
+        UserSummary: {
+            id: components["schemas"]["UUID"];
+            display_name: string;
+            /** @description Avatar ImageのURLです。未設定の場合はnullです。 */
+            avatar_url: string | null;
         };
     };
     responses: {
@@ -569,6 +1011,23 @@ export interface components {
                  * @example {
                  *       "code": "INTERNAL_ERROR",
                  *       "message": "Internal server error",
+                 *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 認証済み User にこの操作を行う権限がありません。 */
+        Forbidden: {
+            headers: {
+                "X-Request-ID": components["headers"]["RequestId"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "FORBIDDEN",
+                 *       "message": "You do not have permission to perform this operation",
                  *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
                  *     }
                  */
@@ -651,6 +1110,23 @@ export interface components {
                 "application/json": components["schemas"]["RateLimitError"];
             };
         };
+        /** @description 指定した Resource が存在しないか、認証済み User から参照できません。 */
+        ResourceNotFound: {
+            headers: {
+                "X-Request-ID": components["headers"]["RequestId"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "NOT_FOUND",
+                 *       "message": "Resource not found",
+                 *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description 有効な Aster Access Token がないため Request を認可しませんでした。 */
         Unauthorized: {
             headers: {
@@ -676,16 +1152,31 @@ export interface components {
     };
     parameters: {
         /**
+         * @description 操作対象の Channel ID です。
+         * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+         */
+        ChannelId: components["schemas"]["UUID"];
+        /**
          * @description 前の Response が返した次ページ用 Cursor です。
          *     Cursor は不透明な値として扱い、Client は内容を解析または変更しません。
          * @example eyJpZCI6IjAxOThiOGYwLTJkNmUtN2M0NS05YTNmLTkyZTNmMmYzYzFhMCJ9
          */
         Cursor: components["schemas"]["PaginationCursor"];
         /**
+         * @description 操作対象の Guild ID です。
+         * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+         */
+        GuildId: components["schemas"]["UUID"];
+        /**
          * @description 1回の Response で取得する最大件数です。
          * @example 50
          */
         Limit: number;
+        /**
+         * @description 操作対象の Message ID です。
+         * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+         */
+        MessageId: components["schemas"]["UUID"];
     };
     requestBodies: never;
     headers: {
@@ -1054,6 +1545,569 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listCurrentUserGuilds: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 前の Response が返した次ページ用 Cursor です。
+                 *     Cursor は不透明な値として扱い、Client は内容を解析または変更しません。
+                 * @example eyJpZCI6IjAxOThiOGYwLTJkNmUtN2M0NS05YTNmLTkyZTNmMmYzYzFhMCJ9
+                 */
+                cursor?: components["parameters"]["Cursor"];
+                /**
+                 * @description 1回の Response で取得する最大件数です。
+                 * @example 50
+                 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 参加しているGuildのPageです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuildList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    createGuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "星屑コミュニティ",
+                 *       "description": "創作とイベント企画のためのコミュニティ"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateGuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Guildを作成しました。 */
+            201: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guild"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getGuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 指定したGuildです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guild"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteGuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guildを削除しました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    updateGuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "星屑クリエイターズ",
+                 *       "description": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateGuildRequest"];
+            };
+        };
+        responses: {
+            /** @description 変更後のGuildです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guild"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listGuildChannels: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 前の Response が返した次ページ用 Cursor です。
+                 *     Cursor は不透明な値として扱い、Client は内容を解析または変更しません。
+                 * @example eyJpZCI6IjAxOThiOGYwLTJkNmUtN2M0NS05YTNmLTkyZTNmMmYzYzFhMCJ9
+                 */
+                cursor?: components["parameters"]["Cursor"];
+                /**
+                 * @description 1回の Response で取得する最大件数です。
+                 * @example 50
+                 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guild内のChannelのPageです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    createGuildChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Guild ID です。
+                 * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
+                 */
+                guild_id: components["parameters"]["GuildId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "type": "TEXT",
+                 *       "name": "イベント企画",
+                 *       "topic": "次回イベントの日程と内容を相談します"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description Channelを作成しました。 */
+            201: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 指定したChannelです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Channelを削除しました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    updateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "秋のイベント企画",
+                 *       "position": 3
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description 変更後のChannelです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Channel"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    listChannelMessages: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 前の Response が返した次ページ用 Cursor です。
+                 *     Cursor は不透明な値として扱い、Client は内容を解析または変更しません。
+                 * @example eyJpZCI6IjAxOThiOGYwLTJkNmUtN2M0NS05YTNmLTkyZTNmMmYzYzFhMCJ9
+                 */
+                cursor?: components["parameters"]["Cursor"];
+                /**
+                 * @description 1回の Response で取得する最大件数です。
+                 * @example 50
+                 */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Text Channel内のMessageのPageです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    createChannelMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "content": "10月24日で進める方向でよいでしょうか？"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Messageを作成しました。 */
+            201: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getChannelMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 指定したMessageです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteChannelMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Messageを削除しました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    updateChannelMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "content": "10月24日（土）で進める方向でよいでしょうか？"
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description 変更後のMessageです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
             429: components["responses"]["RateLimited"];
             default: components["responses"]["Error"];
         };
