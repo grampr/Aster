@@ -25,6 +25,7 @@ describe("appearance preferences", () => {
       memberWidth: 10,
       fontSizeDelta: 20,
       iconSizePercent: 113,
+      fontFamily: "serif",
     })).toEqual({
       density: "comfortable",
       accent: "#24b47e",
@@ -33,7 +34,12 @@ describe("appearance preferences", () => {
       memberWidth: 220,
       fontSizeDelta: 3,
       iconSizePercent: 115,
+      fontFamily: "serif",
     });
+  });
+
+  it("falls back to the system font for an unsupported persisted font", () => {
+    expect(normalizeAppearancePreferences({ fontFamily: "remote-font" }).fontFamily).toBe("system");
   });
 
   it("falls back to defaults when persisted JSON is invalid", () => {
@@ -42,11 +48,12 @@ describe("appearance preferences", () => {
 
   it("round-trips normalized preferences through storage", () => {
     const storage = memoryStorage();
-    const preferences = { ...defaultAppearancePreferences, fontSizeDelta: 2, iconSizePercent: 120 };
+    const preferences = { ...defaultAppearancePreferences, fontSizeDelta: 2, iconSizePercent: 120, fontFamily: "rounded" as const };
 
     saveAppearancePreferences(preferences, storage);
 
     expect(loadAppearancePreferences(storage)).toEqual(preferences);
     expect(storage.value()).toContain('"iconSizePercent":120');
+    expect(storage.value()).toContain('"fontFamily":"rounded"');
   });
 });
