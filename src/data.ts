@@ -16,6 +16,7 @@ export type Member = {
 
 export type ChatMessage = {
   id: string | number;
+  authorId?: string;
   author: string;
   avatar: string;
   time: string;
@@ -25,6 +26,8 @@ export type ChatMessage = {
   afterReply?: string;
   attachment?: boolean;
   reaction?: number;
+  editable?: boolean;
+  edited?: boolean;
 };
 
 export const assets = {

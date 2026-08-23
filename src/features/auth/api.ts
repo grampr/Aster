@@ -12,6 +12,7 @@ import type {
   MessageList,
   RefreshSessionRequest,
   SessionTokenResponse,
+  UpdateMessageRequest,
   UserSelf,
 } from "./types";
 import { createFetchTransport, type FetchTransport } from "./transport";
@@ -108,6 +109,19 @@ export class AsterApiClient {
     return this.request(`/channels/${encodeURIComponent(channelId)}/messages`, {
       method: "POST",
       body: JSON.stringify(body),
+    }, accessToken);
+  }
+
+  updateChannelMessage(channelId: string, messageId: string, body: UpdateMessageRequest, accessToken: string): Promise<Message> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }, accessToken);
+  }
+
+  async deleteChannelMessage(channelId: string, messageId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, {
+      method: "DELETE",
     }, accessToken);
   }
 
