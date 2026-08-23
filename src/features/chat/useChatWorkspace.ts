@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { GatewayMessageResource } from "../../generated/aster-gateway";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "../auth/api";
 import type { Channel, Guild, Message } from "../auth/types";
 import { AsterGatewayClient, type GatewayStatus, type MessageGatewayEvent } from "./gateway";
@@ -33,7 +34,7 @@ export type ChatWorkspace = {
   error: string | null;
   selectGuild: (guildId: string) => void;
   selectChannel: (channelId: string) => void;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, replyToMessageId?: string) => Promise<void>;
   updateMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
@@ -178,12 +179,15 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
     setSelectedChannelId(channelId);
   }, []);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, replyToMessageId?: string) => {
     if (!accessToken || !selectedChannelId || sending) return;
     setSending(true);
     setError(null);
     try {
-      const created = await api.createChannelMessage(selectedChannelId, { content }, accessToken);
+      const created = await api.createChannelMessage(selectedChannelId, {
+        content,
+        ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+      }, accessToken);
       setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
     } catch (reason) {
       setError(messageForError(reason));
@@ -200,7 +204,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
     setError(null);
     try {
       const updated = await api.updateChannelMessage(selectedChannelId, messageId, { content: nextContent }, accessToken);
-      setMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
+      setMessages((current) => applyMessageUpdate(current, updated));
     } catch (reason) {
       setError(messageForError(reason));
       throw reason;
@@ -215,7 +219,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
     setError(null);
     try {
       await api.deleteChannelMessage(selectedChannelId, messageId, accessToken);
-      setMessages((current) => current.filter((message) => message.id !== messageId));
+      setMessages((current) => applyMessageDelete(current, messageId));
     } catch (reason) {
       setError(messageForError(reason));
       throw reason;
@@ -253,18 +257,52 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
   };
 }
 
-function applyGatewayEvent(messages: Message[], event: MessageGatewayEvent): Message[] {
+export function applyGatewayEvent(messages: Message[], event: MessageGatewayEvent): Message[] {
   if (event.t === "MESSAGE_DELETE") {
-    return messages.filter((message) => message.id !== event.d.id);
+    return applyMessageDelete(messages, event.d.id);
   }
-  const next: Message = {
-    ...event.d,
-    content: event.d.content ?? "メッセージ内容を表示する権限がありません。",
-  };
+  const next = messageFromGateway(event.d);
   if (event.t === "MESSAGE_UPDATE") {
-    return messages.map((message) => message.id === next.id ? next : message);
+    return applyMessageUpdate(messages, next);
   }
   return mergeMessages(messages, [next]);
+}
+
+function messageFromGateway(resource: GatewayMessageResource): Message {
+  const hiddenContent = "メッセージ内容を表示する権限がありません。";
+  return {
+    ...resource,
+    content: resource.content ?? hiddenContent,
+    reply_to: resource.reply_to ? {
+      ...resource.reply_to,
+      content: resource.reply_to.content ?? hiddenContent,
+    } : null,
+  };
+}
+
+export function applyMessageUpdate(messages: Message[], updated: Message): Message[] {
+  return messages.map((message) => {
+    if (message.id === updated.id) return updated;
+    if (message.reply_to_message_id !== updated.id) return message;
+    return { ...message, reply_to: replyFromMessage(updated) };
+  });
+}
+
+export function applyMessageDelete(messages: Message[], deletedMessageId: string): Message[] {
+  return messages
+    .filter((message) => message.id !== deletedMessageId)
+    .map((message) => message.reply_to_message_id === deletedMessageId ? { ...message, reply_to: null } : message);
+}
+
+function replyFromMessage(message: Message): NonNullable<Message["reply_to"]> {
+  return {
+    id: message.id,
+    channel_id: message.channel_id,
+    author: message.author,
+    content: message.content,
+    created_at: message.created_at,
+    edited_at: message.edited_at,
+  };
 }
 
 function mergeMessages(primary: Message[], additional: Message[]): Message[] {

@@ -74,12 +74,12 @@ describe("AsterApiClient", () => {
     };
 
     const client = new AsterApiClient("https://aster.example", transport);
-    await client.createChannelMessage("channel/id", { content: "hello" }, "secret-access-token");
+    await client.createChannelMessage("channel/id", { content: "hello", reply_to_message_id: "message-1" }, "secret-access-token");
 
     expect(calls[0].url).toBe("https://aster.example/api/v1/channels/channel%2Fid/messages");
     expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer secret-access-token");
     expect(new Headers(calls[0].init?.headers).get("Content-Type")).toBe("application/json");
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ content: "hello" });
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ content: "hello", reply_to_message_id: "message-1" });
   });
 
   it("updates and deletes a message through the nested Protocol path", async () => {

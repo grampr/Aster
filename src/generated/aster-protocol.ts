@@ -331,6 +331,7 @@ export interface paths {
         /**
          * Text ChannelにMessageを投稿する
          * @description Messageを送信できる権限を持つUserをauthorとして、新しいMessageを作成します。
+         *     reply_to_message_idを指定すると、同じText Channel内の参照可能なMessageへの返信として作成します。
          */
         post: operations["createChannelMessage"];
         delete?: never;
@@ -503,11 +504,17 @@ export interface components {
          * CreateMessageRequest
          * @description Text Channelへ投稿するMessage本文です。
          * @example {
-         *       "content": "10月24日で進める方向でよいでしょうか？"
+         *       "content": "10月24日で進める方向でよいでしょうか？",
+         *       "reply_to_message_id": "0198b8f0-1b72-73a2-a2ef-75cf3cd276d8"
          *     }
          */
         CreateMessageRequest: {
             content: string;
+            /**
+             * @description 同じText Channel内で返信するMessage IDです。
+             *     指定したMessageが存在しない、同じChannelに属さない、または参照できない場合は404を返します。
+             */
+            reply_to_message_id?: components["schemas"]["UUID"];
         };
         /**
          * Email
@@ -695,6 +702,19 @@ export interface components {
          *         "avatar_url": "https://cdn.example.com/avatars/alice.png"
          *       },
          *       "content": "10月24日で進める方向でよいでしょうか？",
+         *       "reply_to_message_id": "0198b8f0-1b72-73a2-a2ef-75cf3cd276d8",
+         *       "reply_to": {
+         *         "id": "0198b8f0-1b72-73a2-a2ef-75cf3cd276d8",
+         *         "channel_id": "0198b8f1-3e7f-7d56-a14f-a3f40304d2b1",
+         *         "author": {
+         *           "id": "0198b8ed-7ba1-7165-b028-9ecf14ed1e7b",
+         *           "display_name": "Bob",
+         *           "avatar_url": null
+         *         },
+         *         "content": "10月24日で進めませんか？",
+         *         "created_at": "2026-08-17T06:10:00Z",
+         *         "edited_at": null
+         *       },
          *       "created_at": "2026-08-17T06:12:00Z",
          *       "edited_at": null
          *     }
@@ -706,8 +726,34 @@ export interface components {
             author: components["schemas"]["UserSummary"];
             /** @description UTF-8のMessage本文です。 */
             content: string;
+            /**
+             * @description 返信元Message IDです。通常のMessageではnullです。
+             *     返信元が削除済みまたは参照不能でも、返信関係を示すためIDは保持します。
+             */
+            reply_to_message_id: components["schemas"]["UUID"] | null;
+            /**
+             * @description 表示可能な返信元Messageです。通常のMessage、削除済み、または参照不能の場合はnullです。
+             *     reply_to_message_idがnullでなく、このFieldがnullの場合、Clientは返信元を表示できない状態として扱います。
+             */
+            reply_to: components["schemas"]["MessageReply"] | null;
             created_at: components["schemas"]["Timestamp"];
             /** @description 最後に本文を編集した時刻です。未編集の場合はnullです。 */
+            edited_at: components["schemas"]["Timestamp"] | null;
+        };
+        /**
+         * MessageReply
+         * @description 返信元Messageを表示するための軽量な参照です。
+         *     再帰的なMessage構造を避けるため、返信元自身のreply_toは含みません。
+         */
+        MessageReply: {
+            id: components["schemas"]["UUID"];
+            /** @description 返信元Messageが属するText Channel IDです。 */
+            channel_id: components["schemas"]["UUID"];
+            author: components["schemas"]["UserSummary"];
+            /** @description 返信元MessageのUTF-8本文です。 */
+            content: string;
+            created_at: components["schemas"]["Timestamp"];
+            /** @description 返信元Messageを最後に編集した時刻です。未編集の場合はnullです。 */
             edited_at: components["schemas"]["Timestamp"] | null;
         };
         /**
@@ -724,6 +770,8 @@ export interface components {
          *             "avatar_url": "https://cdn.example.com/avatars/alice.png"
          *           },
          *           "content": "10月24日で進める方向でよいでしょうか？",
+         *           "reply_to_message_id": null,
+         *           "reply_to": null,
          *           "created_at": "2026-08-17T06:12:00Z",
          *           "edited_at": null
          *         }
@@ -1971,7 +2019,8 @@ export interface operations {
             content: {
                 /**
                  * @example {
-                 *       "content": "10月24日で進める方向でよいでしょうか？"
+                 *       "content": "10月24日で進める方向でよいでしょうか？",
+                 *       "reply_to_message_id": "0198b8f0-1b72-73a2-a2ef-75cf3cd276d8"
                  *     }
                  */
                 "application/json": components["schemas"]["CreateMessageRequest"];
