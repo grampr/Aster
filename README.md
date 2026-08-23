@@ -103,6 +103,9 @@ Password認証でログインすると、Aster Serverから参加Guild、Guild�
 REST APIの接続先は`VITE_ASTER_API_URL`で指定します。未指定時は`http://localhost:8080`を使用し、Protocolの`/api/v1`を自動的に付加します。
 Gateway接続先はREST APIのOriginから`/gateway/v1`を自動生成します。別の接続先を使用する場合は`VITE_ASTER_GATEWAY_URL`で`ws://`または`wss://` URLを指定できます。
 
+Message入力中は4秒間隔で入力開始を通知します。
+受信した入力中表示はProtocolの`started_at`から10秒で失効し、同じUserのMessageを受信した場合は直ちに消去します。
+
 ```bash
 VITE_ASTER_API_URL=https://aster.example.com npm run tauri:dev
 ```

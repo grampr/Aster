@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { GatewayMessageResource } from "../../generated/aster-gateway";
+import type { GatewayMessageResource, GatewayUserSummary } from "../../generated/aster-gateway";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "../auth/api";
 import type { Channel, Guild, Message, MessageReaction } from "../auth/types";
 import { AsterGatewayClient, type GatewayStatus, type MessageGatewayEvent } from "./gateway";
@@ -16,6 +16,9 @@ function messageForError(error: unknown): string {
   return "チャットデータの取得中に予期しないエラーが発生しました。";
 }
 
+const typingExpiryMs = 10_000;
+const typingSignalIntervalMs = 4_000;
+
 export type ChatWorkspace = {
   guilds: Guild[];
   channels: Channel[];
@@ -29,6 +32,7 @@ export type ChatWorkspace = {
   updatingMessageId: string | null;
   deletingMessageId: string | null;
   reactingKey: string | null;
+  typingUsers: GatewayUserSummary[];
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
   gatewayStatus: GatewayStatus;
@@ -39,6 +43,7 @@ export type ChatWorkspace = {
   updateMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   toggleReaction: (messageId: string, emoji: string, reactedByMe: boolean) => Promise<void>;
+  notifyTyping: () => void;
   loadOlderMessages: () => Promise<void>;
   retry: () => void;
 };
@@ -57,6 +62,7 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
   const [updatingMessageId, setUpdatingMessageId] = useState<string | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [reactingKey, setReactingKey] = useState<string | null>(null);
+  const [typingUsers, setTypingUsers] = useState<GatewayUserSummary[]>([]);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +70,21 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>("idle");
   const [retryVersion, setRetryVersion] = useState(0);
   const selectedChannelIdRef = useRef<string | null>(null);
+  const typingTimersRef = useRef(new Map<string, ReturnType<typeof globalThis.setTimeout>>());
+  const lastTypingSignalRef = useRef<{ channelId: string | null; sentAt: number }>({ channelId: null, sentAt: 0 });
+
+  const removeTypingUser = useCallback((userId: string) => {
+    const timer = typingTimersRef.current.get(userId);
+    if (timer !== undefined) globalThis.clearTimeout(timer);
+    typingTimersRef.current.delete(userId);
+    setTypingUsers((current) => current.filter((user) => user.id !== userId));
+  }, []);
+
+  const clearTypingUsers = useCallback(() => {
+    for (const timer of typingTimersRef.current.values()) globalThis.clearTimeout(timer);
+    typingTimersRef.current.clear();
+    setTypingUsers([]);
+  }, []);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
@@ -90,6 +111,20 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
         if (disposed) return;
         const channelId = event.d.channel_id;
         if (channelId !== selectedChannelIdRef.current) return;
+        if (event.t === "TYPING_START") {
+          if (event.d.user.id === currentUserId) return;
+          const remaining = Date.parse(event.d.started_at) + typingExpiryMs - Date.now();
+          if (!Number.isFinite(remaining) || remaining <= 0) return;
+          const existingTimer = typingTimersRef.current.get(event.d.user.id);
+          if (existingTimer !== undefined) globalThis.clearTimeout(existingTimer);
+          setTypingUsers((current) => upsertTypingUser(current, event.d.user));
+          typingTimersRef.current.set(event.d.user.id, globalThis.setTimeout(() => {
+            typingTimersRef.current.delete(event.d.user.id);
+            setTypingUsers((current) => current.filter((user) => user.id !== event.d.user.id));
+          }, remaining));
+          return;
+        }
+        if (event.t === "MESSAGE_CREATE") removeTypingUser(event.d.author.id);
         setMessages((current) => applyGatewayEvent(current, event, currentUserId));
       },
     });
@@ -98,7 +133,9 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
       disposed = true;
       gateway.stop();
     };
-  }, [accessToken, currentUserId]);
+  }, [accessToken, currentUserId, removeTypingUser]);
+
+  useEffect(() => clearTypingUsers, [clearTypingUsers]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -150,6 +187,8 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
   }, [accessToken, activeGuildId, api, retryVersion]);
 
   useEffect(() => {
+    clearTypingUsers();
+    lastTypingSignalRef.current = { channelId: selectedChannelId, sentAt: 0 };
     if (!accessToken || !selectedChannelId) {
       setMessages([]);
       setMessageCursor(null);
@@ -171,7 +210,7 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
       if (!cancelled) setLoadingMessages(false);
     });
     return () => { cancelled = true; };
-  }, [accessToken, api, retryVersion, selectedChannelId]);
+  }, [accessToken, api, clearTypingUsers, retryVersion, selectedChannelId]);
 
   const selectGuild = useCallback((guildId: string) => {
     setActiveGuildId(guildId);
@@ -249,6 +288,17 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     }
   }, [accessToken, api, reactingKey, selectedChannelId]);
 
+  const notifyTyping = useCallback(() => {
+    if (!accessToken || !selectedChannelId) return;
+    const now = Date.now();
+    const previous = lastTypingSignalRef.current;
+    if (previous.channelId === selectedChannelId && now - previous.sentAt < typingSignalIntervalMs) return;
+    lastTypingSignalRef.current = { channelId: selectedChannelId, sentAt: now };
+    void api.startChannelTyping(selectedChannelId, accessToken).catch(() => {
+      // Typing status is transient and must not replace actionable chat errors.
+    });
+  }, [accessToken, api, selectedChannelId]);
+
   const loadOlderMessages = useCallback(async () => {
     if (!accessToken || !selectedChannelId || !messageCursor || loadingOlderMessages) return;
     setLoadingOlderMessages(true);
@@ -272,13 +322,20 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
 
   return {
     guilds, channels, messages, activeGuildId, selectedChannelId,
-    loadingGuilds, loadingChannels, loadingMessages, sending, updatingMessageId, deletingMessageId, reactingKey,
+    loadingGuilds, loadingChannels, loadingMessages, sending, updatingMessageId, deletingMessageId, reactingKey, typingUsers,
     hasOlderMessages: messageCursor !== null, loadingOlderMessages, gatewayStatus, error: error ?? gatewayError,
-    selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, toggleReaction, loadOlderMessages, retry,
+    selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, toggleReaction, notifyTyping, loadOlderMessages, retry,
   };
 }
 
+export function upsertTypingUser(users: GatewayUserSummary[], incoming: GatewayUserSummary): GatewayUserSummary[] {
+  const existingIndex = users.findIndex((user) => user.id === incoming.id);
+  if (existingIndex === -1) return [...users, incoming];
+  return users.map((user, index) => index === existingIndex ? incoming : user);
+}
+
 export function applyGatewayEvent(messages: Message[], event: MessageGatewayEvent, currentUserId: string | null = null): Message[] {
+  if (event.t === "TYPING_START") return messages;
   if (event.t === "MESSAGE_DELETE") {
     return applyMessageDelete(messages, event.d.id);
   }
