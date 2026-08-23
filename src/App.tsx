@@ -15,8 +15,8 @@ import {
 import { AuthGate } from "./features/auth/AuthGate";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
 import {
-  accentOptions, defaultAppearancePreferences, loadAppearancePreferences, saveAppearancePreferences,
-  type Density,
+  accentOptions, defaultAppearancePreferences, fontOptions, loadAppearancePreferences, saveAppearancePreferences,
+  type Density, type FontFamily,
 } from "./features/appearance/preferences";
 import type { GatewayStatus } from "./features/chat/gateway";
 import { useChatWorkspace } from "./features/chat/useChatWorkspace";
@@ -210,7 +210,8 @@ function ResizeHandle({ label, onPointerDown }: { label: string; onPointerDown: 
 
 function AppearancePopover({
   density, onDensity, accent, onAccent, membersVisible, onMembersVisible,
-  channelWidth, onChannelWidth, fontSizeDelta, onFontSizeDelta, iconSizePercent, onIconSizePercent, onReset, onClose,
+  channelWidth, onChannelWidth, fontSizeDelta, onFontSizeDelta, iconSizePercent, onIconSizePercent,
+  fontFamily, onFontFamily, onReset, onClose,
 }: {
   density: Density;
   onDensity: (value: Density) => void;
@@ -224,6 +225,8 @@ function AppearancePopover({
   onFontSizeDelta: (value: number) => void;
   iconSizePercent: number;
   onIconSizePercent: (value: number) => void;
+  fontFamily: FontFamily;
+  onFontFamily: (value: FontFamily) => void;
   onReset: () => void;
   onClose: () => void;
 }) {
@@ -253,6 +256,12 @@ function AppearancePopover({
       <label className="range-control">
         <span><span>アイコンサイズ</span><output>{iconSizePercent}%</output></span>
         <input type="range" min="85" max="125" step="5" value={iconSizePercent} onInput={(event) => onIconSizePercent(Number(event.currentTarget.value))} />
+      </label>
+      <label className="font-control">
+        <span>フォント</span>
+        <select value={fontFamily} onChange={(event) => onFontFamily(event.currentTarget.value as FontFamily)}>
+          {fontOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
       </label>
       <label className="range-control">
         <span><span>チャンネル幅</span><output>{channelWidth}px</output></span>
@@ -597,13 +606,14 @@ function DesktopWorkspace() {
   const [memberWidth, setMemberWidth] = useState(initialAppearance.memberWidth);
   const [fontSizeDelta, setFontSizeDelta] = useState(initialAppearance.fontSizeDelta);
   const [iconSizePercent, setIconSizePercent] = useState(initialAppearance.iconSizePercent);
+  const [fontFamily, setFontFamily] = useState<FontFamily>(initialAppearance.fontFamily);
   const [demoMessages, setDemoMessages] = useState(initialMessages);
 
   useEffect(() => {
     saveAppearancePreferences({
-      density, accent, membersVisible, channelWidth, memberWidth, fontSizeDelta, iconSizePercent,
+      density, accent, membersVisible, channelWidth, memberWidth, fontSizeDelta, iconSizePercent, fontFamily,
     });
-  }, [accent, channelWidth, density, fontSizeDelta, iconSizePercent, memberWidth, membersVisible]);
+  }, [accent, channelWidth, density, fontFamily, fontSizeDelta, iconSizePercent, memberWidth, membersVisible]);
 
   const visibleGuilds: ViewGuild[] = isDemo ? demoGuilds : workspace.guilds.map((guild) => ({
     id: guild.id, name: guild.name, image: guild.icon_url ?? assets.logo,
@@ -660,7 +670,8 @@ function DesktopWorkspace() {
     "--accent": accent,
     "--font-size-delta": `${fontSizeDelta}px`,
     "--icon-scale": iconSizePercent / 100,
-  } as CSSProperties), [accent, channelWidth, fontSizeDelta, iconSizePercent, memberWidth]);
+    "--app-font-family": fontOptions.find((option) => option.value === fontFamily)?.css ?? fontOptions[0].css,
+  } as CSSProperties), [accent, channelWidth, fontFamily, fontSizeDelta, iconSizePercent, memberWidth]);
 
   const resetAppearance = () => {
     setDensity(defaultAppearancePreferences.density);
@@ -670,6 +681,7 @@ function DesktopWorkspace() {
     setMemberWidth(defaultAppearancePreferences.memberWidth);
     setFontSizeDelta(defaultAppearancePreferences.fontSizeDelta);
     setIconSizePercent(defaultAppearancePreferences.iconSizePercent);
+    setFontFamily(defaultAppearancePreferences.fontFamily);
   };
 
   const sendMessage = async (body: string, replyToMessageId?: ChatMessage["id"]) => {
@@ -736,6 +748,7 @@ function DesktopWorkspace() {
           channelWidth, onChannelWidth: setChannelWidth,
           fontSizeDelta, onFontSizeDelta: setFontSizeDelta,
           iconSizePercent, onIconSizePercent: setIconSizePercent,
+          fontFamily, onFontFamily: setFontFamily,
           onReset: resetAppearance, onClose: () => setSettingsOpen(false),
         }}
         messages={visibleMessages}
