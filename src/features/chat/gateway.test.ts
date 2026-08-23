@@ -71,7 +71,7 @@ describe("AsterGatewayClient", () => {
 
     expect(JSON.parse(sockets[0].sent[0])).toEqual({
       op: 2,
-      d: { token: "secret-access-token", intents: 21 },
+      d: { token: "secret-access-token", intents: 149 },
     });
 
     sockets[0].receive({
@@ -89,15 +89,24 @@ describe("AsterGatewayClient", () => {
         channel_id: "channel-1",
         author: { id: "user-1", display_name: "Alice", avatar_url: null },
         content: "hello",
+        reply_to_message_id: null,
+        reply_to: null,
         created_at: "2026-08-23T00:00:00Z",
         edited_at: null,
       },
     });
+    sockets[0].receive({
+      op: 0,
+      t: "MESSAGE_REACTION_ADD",
+      s: 2,
+      d: { message_id: "message-1", channel_id: "channel-1", user_id: "user-1", emoji: "👍", count: 1 },
+    });
     vi.advanceTimersByTime(1_000);
 
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
+    expect(events[1].t).toBe("MESSAGE_REACTION_ADD");
     expect(statuses.at(-1)).toBe("connected");
-    expect(JSON.parse(sockets[0].sent[1])).toEqual({ op: 1, d: 1 });
+    expect(JSON.parse(sockets[0].sent[1])).toEqual({ op: 1, d: 2 });
 
     sockets[0].receive({ op: 11, d: null });
     client.stop();
@@ -177,7 +186,7 @@ describe("AsterGatewayClient", () => {
     sockets[1].open();
     sockets[1].receive({ op: 10, d: { heartbeat_interval_ms: 1_000 } });
 
-    expect(JSON.parse(sockets[1].sent[0])).toEqual({ op: 2, d: { token: "access", intents: 21 } });
+    expect(JSON.parse(sockets[1].sent[0])).toEqual({ op: 2, d: { token: "access", intents: 149 } });
     client.stop();
   });
 });

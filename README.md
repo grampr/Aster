@@ -94,9 +94,9 @@ npm run test:sites
 npm run tauri:check
 ```
 
-現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信、返信、編集、削除、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
+現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信、返信、Reaction、編集、削除、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
 
-Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿と返信、自分のMessageのインライン編集と確認付き削除、Cursorによる過去Messageの追加取得、Gatewayによる作成、更新、削除のリアルタイム反映に対応しています。返信元が編集された場合は参照内容を更新し、削除または閲覧不能になった場合は本文を表示できない状態として示します。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで同じ操作を含むサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
+Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿と返信、Unicode絵文字によるReaction、自分のMessageのインライン編集と確認付き削除、Cursorによる過去Messageの追加取得、Gatewayによるリアルタイム反映に対応しています。返信元が編集された場合は参照内容を更新し、削除または閲覧不能になった場合は本文を表示できない状態として示します。Reaction Eventの件数は現在値として適用するため、Gatewayから再配信されても二重に加算しません。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで同じ操作を含むサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
 
 ### API接続先
 

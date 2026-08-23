@@ -5,7 +5,7 @@ import {
   FunnelSimple, Gear, Hash, Headphones, ImageSquare, Info, ListPlus,
   MagnifyingGlass, Microphone, MicrophoneSlash, PaperPlaneTilt, Plus,
   PushPin, SlidersHorizontal, Smiley, SpeakerHigh, TextAa, UserPlus,
-  Users, Waveform, X, ThumbsUp, PhoneDisconnect, ArrowBendUpLeft,
+  Users, Waveform, X, PhoneDisconnect, ArrowBendUpLeft,
   SignOut, PencilSimple, Trash,
 } from "@phosphor-icons/react";
 import {
@@ -20,6 +20,7 @@ import { useChatWorkspace } from "./features/chat/useChatWorkspace";
 type Density = "compact" | "comfortable";
 
 const accents = ["#1687f8", "#24b47e", "#7557e8", "#ff8a34", "#ec3e78", "#7c8798"];
+const reactionOptions = ["👍", "❤️", "😂", "🎉", "👀"];
 
 type ViewGuild = { id: string; name: string; image: string };
 
@@ -237,7 +238,7 @@ function ChatPanel({
   channelKey, channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend,
   loading = false, sending = false, error = null, enabled = true,
   hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry, gatewayStatus,
-  onUpdate, onDelete, updatingMessageId = null, deletingMessageId = null,
+  onUpdate, onDelete, onToggleReaction, updatingMessageId = null, deletingMessageId = null, reactingKey = null,
 }: {
   channelKey: string | null;
   channelLabel: string;
@@ -258,8 +259,10 @@ function ChatPanel({
   gatewayStatus?: GatewayStatus;
   onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
   onDelete?: (messageId: ChatMessage["id"]) => Promise<void>;
+  onToggleReaction: (messageId: ChatMessage["id"], emoji: string, reactedByMe: boolean) => Promise<void>;
   updatingMessageId?: string | null;
   deletingMessageId?: string | null;
+  reactingKey?: string | null;
 }) {
   const [draft, setDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -311,8 +314,10 @@ function ChatPanel({
             onReply={setReplyingTo}
             onUpdate={onUpdate}
             onDelete={onDelete}
+            onToggleReaction={onToggleReaction}
             updating={String(message.id) === updatingMessageId}
             deleting={String(message.id) === deletingMessageId}
+            reactingKey={reactingKey}
           />
         ))}
       </div>
@@ -340,18 +345,21 @@ function ChatPanel({
   );
 }
 
-function MessageGroup({ message, onReply, onUpdate, onDelete, updating, deleting }: {
+function MessageGroup({ message, onReply, onUpdate, onDelete, onToggleReaction, updating, deleting, reactingKey }: {
   message: ChatMessage;
   onReply: (message: ChatMessage) => void;
   onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
   onDelete?: (messageId: ChatMessage["id"]) => Promise<void>;
+  onToggleReaction: (messageId: ChatMessage["id"], emoji: string, reactedByMe: boolean) => Promise<void>;
   updating: boolean;
   deleting: boolean;
+  reactingKey: string | null;
 }) {
   const originalContent = message.lines.join("\n");
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(originalContent);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
 
   const beginEditing = () => {
     setConfirmingDelete(false);
@@ -386,6 +394,14 @@ function MessageGroup({ message, onReply, onUpdate, onDelete, updating, deleting
       await onDelete(message.id);
     } catch {
       // The workspace notice reports the failure and keeps confirmation visible.
+    }
+  };
+  const toggleReaction = async (emoji: string, reactedByMe: boolean) => {
+    try {
+      await onToggleReaction(message.id, emoji, reactedByMe);
+      setReactionPickerOpen(false);
+    } catch {
+      // The workspace notice reports the failure while keeping the picker available.
     }
   };
 
@@ -443,7 +459,23 @@ function MessageGroup({ message, onReply, onUpdate, onDelete, updating, deleting
             <IconButton label="新しいウィンドウで開く"><ArrowSquareOut size={20} /></IconButton>
           </div>
         )}
-        {message.reaction && <button type="button" className="reaction"><ThumbsUp size={15} weight="fill" />{message.reaction}</button>}
+        {!!message.reactions?.length && (
+          <div className="message-reactions" aria-label="リアクション">
+            {message.reactions.map((reaction) => (
+              <button
+                type="button"
+                className={`reaction ${reaction.me ? "is-mine" : ""}`}
+                aria-label={`${reaction.emoji} ${reaction.count}件${reaction.me ? "、自分が追加済み" : ""}`}
+                aria-pressed={reaction.me}
+                disabled={reactingKey === `${message.id}:${reaction.emoji}`}
+                onClick={() => void toggleReaction(reaction.emoji, reaction.me)}
+                key={reaction.emoji}
+              >
+                <span aria-hidden="true">{reaction.emoji}</span><span>{reaction.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {confirmingDelete && (
           <div className="message-delete-confirm" role="alert">
             <span>このメッセージを削除しますか？</span>
@@ -455,8 +487,17 @@ function MessageGroup({ message, onReply, onUpdate, onDelete, updating, deleting
       {!editing && !confirmingDelete && (
         <div className="message-actions" aria-label="メッセージ操作">
           <IconButton label="メッセージに返信" onClick={() => onReply(message)}><ArrowBendUpLeft size={17} /></IconButton>
+          <IconButton label="リアクションを追加" active={reactionPickerOpen} onClick={() => setReactionPickerOpen((open) => !open)}><Smiley size={17} /></IconButton>
           {message.editable && <IconButton label="メッセージを編集" onClick={beginEditing}><PencilSimple size={17} /></IconButton>}
           {message.editable && <IconButton label="メッセージを削除" className="message-delete-button" onClick={() => setConfirmingDelete(true)}><Trash size={17} /></IconButton>}
+          {reactionPickerOpen && (
+            <div className="reaction-picker" role="menu" aria-label="リアクションを選択">
+              {reactionOptions.map((emoji) => {
+                const existing = message.reactions?.find((reaction) => reaction.emoji === emoji);
+                return <button type="button" role="menuitem" aria-label={`${emoji}リアクションを${existing?.me ? "解除" : "追加"}`} onClick={() => void toggleReaction(emoji, existing?.me ?? false)} key={emoji}>{emoji}</button>;
+              })}
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -505,7 +546,7 @@ function MemberPanel({ onClose, onLogout }: { onClose: () => void; onLogout: () 
 
 function DesktopWorkspace() {
   const { logout, accessToken, user } = useAuth();
-  const workspace = useChatWorkspace(accessToken);
+  const workspace = useChatWorkspace(accessToken, user?.id ?? null);
   const isDemo = accessToken === null;
   const [demoActiveGuild, setDemoActiveGuild] = useState("aster");
   const [demoSelectedChannel, setDemoSelectedChannel] = useState("event");
@@ -537,6 +578,7 @@ function DesktopWorkspace() {
     lines: [message.content],
     editable: message.author.id === user?.id,
     edited: message.edited_at !== null,
+    reactions: message.reactions,
     replyTo: message.reply_to ? {
       id: message.reply_to.id,
       author: message.reply_to.author.display_name,
@@ -601,6 +643,23 @@ function DesktopWorkspace() {
         : message));
   };
 
+  const toggleReaction = async (messageId: ChatMessage["id"], emoji: string, reactedByMe: boolean) => {
+    if (!isDemo) return workspace.toggleReaction(String(messageId), emoji, reactedByMe);
+    setDemoMessages((current) => current.map((message) => {
+      if (message.id !== messageId) return message;
+      const reactions = [...(message.reactions ?? [])];
+      const index = reactions.findIndex((reaction) => reaction.emoji === emoji);
+      if (index < 0) reactions.push({ emoji, count: 1, me: true });
+      else if (reactedByMe && reactions[index].count === 1) reactions.splice(index, 1);
+      else reactions[index] = {
+        ...reactions[index],
+        count: reactions[index].count + (reactedByMe ? -1 : 1),
+        me: !reactedByMe,
+      };
+      return { ...message, reactions };
+    }));
+  };
+
   return (
     <div className={`app-shell ${membersVisible ? "" : "without-members"}`} style={shellStyle}>
       <GuildRail guilds={visibleGuilds} activeGuild={activeGuild} onSelect={isDemo ? setDemoActiveGuild : workspace.selectGuild} />
@@ -617,8 +676,10 @@ function DesktopWorkspace() {
         onSend={sendMessage}
         onUpdate={updateMessage}
         onDelete={deleteMessage}
+        onToggleReaction={toggleReaction}
         updatingMessageId={isDemo ? null : workspace.updatingMessageId}
         deletingMessageId={isDemo ? null : workspace.deletingMessageId}
+        reactingKey={isDemo ? null : workspace.reactingKey}
         loading={!isDemo && workspace.loadingMessages}
         sending={!isDemo && workspace.sending}
         error={isDemo ? null : workspace.error}
