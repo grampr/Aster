@@ -21,6 +21,8 @@ export type ChatMessage = {
   avatar: string;
   time: string;
   lines: string[];
+  replyTo?: { id: ChatMessage["id"]; author: string; body: string; avatar: string };
+  replyUnavailable?: boolean;
   reply?: { author: string; body: string; avatar: string };
   threadLabel?: string;
   afterReply?: string;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ComponentProps, FormEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import {
   Archive, ArrowSquareOut, At, CaretDown, CaretUp, Check, DownloadSimple,
@@ -234,18 +234,19 @@ function AppearancePopover({ density, onDensity, accent, onAccent, membersVisibl
 }
 
 function ChatPanel({
-  channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend,
+  channelKey, channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend,
   loading = false, sending = false, error = null, enabled = true,
   hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry, gatewayStatus,
   onUpdate, onDelete, updatingMessageId = null, deletingMessageId = null,
 }: {
+  channelKey: string | null;
   channelLabel: string;
   density: Density;
   settingsOpen: boolean;
   onSettings: () => void;
   appearance: ComponentProps<typeof AppearancePopover>;
   messages: ChatMessage[];
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string, replyToMessageId?: ChatMessage["id"]) => Promise<void>;
   loading?: boolean;
   sending?: boolean;
   error?: string | null;
@@ -261,12 +262,15 @@ function ChatPanel({
   deletingMessageId?: string | null;
 }) {
   const [draft, setDraft] = useState("");
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  useEffect(() => setReplyingTo(null), [channelKey]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!draft.trim()) return;
     try {
-      await onSend(draft.trim());
+      await onSend(draft.trim(), replyingTo?.id);
       setDraft("");
+      setReplyingTo(null);
     } catch {
       // Workspace error state keeps the draft available for retry.
     }
@@ -304,6 +308,7 @@ function ChatPanel({
           <MessageGroup
             key={message.id}
             message={message}
+            onReply={setReplyingTo}
             onUpdate={onUpdate}
             onDelete={onDelete}
             updating={String(message.id) === updatingMessageId}
@@ -312,6 +317,13 @@ function ChatPanel({
         ))}
       </div>
       <form className="composer" onSubmit={submit}>
+        {replyingTo && (
+          <div className="composer-reply">
+            <ArrowBendUpLeft size={17} />
+            <div><strong>{replyingTo.author} に返信</strong><span>{replyingTo.lines.join(" ")}</span></div>
+            <IconButton label="返信をキャンセル" onClick={() => setReplyingTo(null)}><X size={17} /></IconButton>
+          </div>
+        )}
         <textarea disabled={!enabled || sending} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={enabled ? `#${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
         <div className="composer-actions">
           <div>
@@ -328,8 +340,9 @@ function ChatPanel({
   );
 }
 
-function MessageGroup({ message, onUpdate, onDelete, updating, deleting }: {
+function MessageGroup({ message, onReply, onUpdate, onDelete, updating, deleting }: {
   message: ChatMessage;
+  onReply: (message: ChatMessage) => void;
   onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
   onDelete?: (messageId: ChatMessage["id"]) => Promise<void>;
   updating: boolean;
@@ -381,6 +394,19 @@ function MessageGroup({ message, onUpdate, onDelete, updating, deleting }: {
       <Avatar src={message.avatar} size="large" />
       <div className="message-content">
         <div className="message-meta"><strong>{message.author}</strong><time>{message.time}</time>{message.edited && <span className="message-edited">編集済み</span>}</div>
+        {message.replyTo && (
+          <div className="message-reply-reference">
+            <ArrowBendUpLeft size={15} />
+            <Avatar src={message.replyTo.avatar} size="small" />
+            <div><strong>{message.replyTo.author}</strong><span>{message.replyTo.body}</span></div>
+          </div>
+        )}
+        {message.replyUnavailable && (
+          <div className="message-reply-reference is-unavailable">
+            <ArrowBendUpLeft size={15} />
+            <span>返信元のメッセージを表示できません</span>
+          </div>
+        )}
         {editing ? (
           <form className="message-edit-form" onSubmit={submitEdit}>
             <textarea
@@ -426,10 +452,11 @@ function MessageGroup({ message, onUpdate, onDelete, updating, deleting }: {
           </div>
         )}
       </div>
-      {message.editable && !editing && !confirmingDelete && (
+      {!editing && !confirmingDelete && (
         <div className="message-actions" aria-label="メッセージ操作">
-          <IconButton label="メッセージを編集" onClick={beginEditing}><PencilSimple size={17} /></IconButton>
-          <IconButton label="メッセージを削除" className="message-delete-button" onClick={() => setConfirmingDelete(true)}><Trash size={17} /></IconButton>
+          <IconButton label="メッセージに返信" onClick={() => onReply(message)}><ArrowBendUpLeft size={17} /></IconButton>
+          {message.editable && <IconButton label="メッセージを編集" onClick={beginEditing}><PencilSimple size={17} /></IconButton>}
+          {message.editable && <IconButton label="メッセージを削除" className="message-delete-button" onClick={() => setConfirmingDelete(true)}><Trash size={17} /></IconButton>}
         </div>
       )}
     </article>
@@ -510,6 +537,13 @@ function DesktopWorkspace() {
     lines: [message.content],
     editable: message.author.id === user?.id,
     edited: message.edited_at !== null,
+    replyTo: message.reply_to ? {
+      id: message.reply_to.id,
+      author: message.reply_to.author.display_name,
+      avatar: message.reply_to.author.avatar_url ?? assets.mountain,
+      body: message.reply_to.content,
+    } : undefined,
+    replyUnavailable: message.reply_to_message_id !== null && message.reply_to === null,
   }));
   const guildName = visibleGuilds.find((guild) => guild.id === activeGuild)?.name ?? (workspace.loadingGuilds ? "読み込み中…" : "コミュニティがありません");
   const channelLabel = visibleChannels.find((channel) => channel.id === selectedChannel)?.label ?? "チャンネル未選択";
@@ -537,22 +571,34 @@ function DesktopWorkspace() {
     "--accent": accent,
   } as CSSProperties), [channelWidth, memberWidth, accent]);
 
-  const sendMessage = async (body: string) => {
-    if (!isDemo) return workspace.sendMessage(body);
-    setDemoMessages((current) => [...current, {
-      id: Date.now(), author: user?.display_name ?? "Aster", avatar: user?.avatar_url ?? assets.mountain,
-      time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()), lines: [body], editable: true,
-    }]);
+  const sendMessage = async (body: string, replyToMessageId?: ChatMessage["id"]) => {
+    if (!isDemo) return workspace.sendMessage(body, replyToMessageId === undefined ? undefined : String(replyToMessageId));
+    setDemoMessages((current) => {
+      const source = current.find((message) => message.id === replyToMessageId);
+      return [...current, {
+        id: Date.now(), author: user?.display_name ?? "Aster", avatar: user?.avatar_url ?? assets.mountain,
+        time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()), lines: [body], editable: true,
+        replyTo: source ? { id: source.id, author: source.author, avatar: source.avatar, body: source.lines.join("\n") } : undefined,
+      }];
+    });
   };
 
   const updateMessage = async (messageId: ChatMessage["id"], content: string) => {
     if (!isDemo) return workspace.updateMessage(String(messageId), content);
-    setDemoMessages((current) => current.map((message) => message.id === messageId ? { ...message, lines: [content], edited: true } : message));
+    setDemoMessages((current) => current.map((message) => {
+      if (message.id === messageId) return { ...message, lines: [content], edited: true };
+      if (message.replyTo?.id === messageId) return { ...message, replyTo: { ...message.replyTo, body: content } };
+      return message;
+    }));
   };
 
   const deleteMessage = async (messageId: ChatMessage["id"]) => {
     if (!isDemo) return workspace.deleteMessage(String(messageId));
-    setDemoMessages((current) => current.filter((message) => message.id !== messageId));
+    setDemoMessages((current) => current
+      .filter((message) => message.id !== messageId)
+      .map((message) => message.replyTo?.id === messageId
+        ? { ...message, replyTo: undefined, replyUnavailable: true }
+        : message));
   };
 
   return (
@@ -561,6 +607,7 @@ function DesktopWorkspace() {
       <ChannelPanel channels={visibleChannels} guildName={guildName} selectedChannel={selectedChannel} loading={!isDemo && workspace.loadingChannels} onSelect={isDemo ? setDemoSelectedChannel : workspace.selectChannel} />
       <ResizeHandle label="チャンネル幅を変更" onPointerDown={beginResize("channel")} />
       <ChatPanel
+        channelKey={selectedChannel}
         channelLabel={channelLabel}
         density={density}
         settingsOpen={settingsOpen}

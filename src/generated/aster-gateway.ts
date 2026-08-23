@@ -204,6 +204,14 @@ export interface GatewayMessageResource {
    */
   content: string | null;
   /**
+   * 返信元Message IDです。通常のMessageではnullです。返信元が削除済みまたは参照不能でもIDは保持します。
+   */
+  reply_to_message_id: string | null;
+  /**
+   * 表示可能な返信元Messageです。通常のMessage、削除済み、または参照不能の場合はnullです。
+   */
+  reply_to: GatewayMessageReplyResource | null;
+  /**
    * Messageを作成した時刻です。
    */
   created_at: string;
@@ -228,6 +236,32 @@ export interface GatewayUserSummary {
    * Avatar ImageのURLです。未設定の場合はnullです。
    */
   avatar_url: string | null;
+}
+/**
+ * 返信元Messageを表示するための軽量な参照です。再帰的なreply_toは含みません。MESSAGE_CONTENT Intentが許可されない接続ではcontentをnullにします。
+ */
+export interface GatewayMessageReplyResource {
+  /**
+   * 返信元Message IDです。
+   */
+  id: string;
+  /**
+   * 返信元Messageが属するText Channel IDです。
+   */
+  channel_id: string;
+  author: GatewayUserSummary;
+  /**
+   * 返信元MessageのUTF-8本文です。MESSAGE_CONTENT Intentが許可されない場合はnullです。
+   */
+  content: string | null;
+  /**
+   * 返信元Messageを作成した時刻です。
+   */
+  created_at: string;
+  /**
+   * 返信元Messageを最後に編集した時刻です。未編集の場合はnullです。
+   */
+  edited_at: string | null;
 }
 /**
  * Serverが購読中のClientまたはBotへ、更新後のMessage全体を配信します。
