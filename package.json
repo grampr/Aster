@@ -11,7 +11,8 @@
     "build": "npm run build:client && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs",
-    "generate:protocol": "openapi-typescript https://raw.githubusercontent.com/grampr/Aster-protocol/main/generated/openapi.yaml -o src/generated/aster-protocol.ts",
+    "generate:protocol": "openapi-typescript https://raw.githubusercontent.com/grampr/Aster-protocol/main/generated/openapi.yaml -o src/generated/aster-protocol.ts && npm run generate:gateway",
+    "generate:gateway": "node scripts/generate-gateway-protocol.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml"

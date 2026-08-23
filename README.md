@@ -4,7 +4,7 @@ Aster は、リアルタイムなチャットと音声通話、セルフホス�
 
 > [!IMPORTANT]
 > Aster は設計初期段階にあります。
-> 現在はTauriデスクトップシェル、Password・Google認証クライアント、Guild・Channel・Message API接続を実行できます。安定版APIは開発中です。
+> 現在はTauriデスクトップシェル、Password・Google認証クライアント、Guild・Channel・Message API、Message Gateway接続を実行できます。安定版APIは開発中です。
 
 ## 目指すもの
 
@@ -96,17 +96,18 @@ npm run tauri:check
 
 現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージ送信、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
 
-Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿とCursorによる過去Messageの追加取得にも対応しています。開発時のデモモードでは、Serverなしで従来のサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
+Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿、Cursorによる過去Messageの追加取得、Gatewayによる作成・更新・削除のリアルタイム反映に対応しています。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで従来のサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
 
 ### API接続先
 
 REST APIの接続先は`VITE_ASTER_API_URL`で指定します。未指定時は`http://localhost:8080`を使用し、Protocolの`/api/v1`を自動的に付加します。
+Gateway接続先はREST APIのOriginから`/gateway/v1`を自動生成します。別の接続先を使用する場合は`VITE_ASTER_GATEWAY_URL`で`ws://`または`wss://` URLを指定できます。
 
 ```bash
 VITE_ASTER_API_URL=https://aster.example.com npm run tauri:dev
 ```
 
-Protocol型を更新する場合は、`Aster-protocol`のマージ済みOpenAPIから生成物を更新します。
+Protocol型を更新する場合は、`Aster-protocol`のマージ済みOpenAPIとGateway JSON Schemaから生成物を更新します。
 
 ```bash
 npm run generate:protocol

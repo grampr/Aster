@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "../auth/api";
 import type { Channel, Guild, Message } from "../auth/types";
+import { AsterGatewayClient, type GatewayStatus, type MessageGatewayEvent } from "./gateway";
 
 function messageForError(error: unknown): string {
   if (error instanceof AsterNetworkError) return error.message;
@@ -26,6 +27,7 @@ export type ChatWorkspace = {
   sending: boolean;
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
+  gatewayStatus: GatewayStatus;
   error: string | null;
   selectGuild: (guildId: string) => void;
   selectChannel: (channelId: string) => void;
@@ -48,7 +50,45 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus>("idle");
   const [retryVersion, setRetryVersion] = useState(0);
+  const selectedChannelIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedChannelId;
+  }, [selectedChannelId]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setGatewayStatus("idle");
+      setGatewayError(null);
+      return;
+    }
+    let disposed = false;
+    const gateway = new AsterGatewayClient({
+      accessToken,
+      onStatus: (status) => {
+        if (disposed) return;
+        setGatewayStatus(status);
+        if (status === "connected") setGatewayError(null);
+      },
+      onError: (message) => {
+        if (!disposed) setGatewayError(message);
+      },
+      onEvent: (event) => {
+        if (disposed) return;
+        const channelId = event.d.channel_id;
+        if (channelId !== selectedChannelIdRef.current) return;
+        setMessages((current) => applyGatewayEvent(current, event));
+      },
+    });
+    gateway.start();
+    return () => {
+      disposed = true;
+      gateway.stop();
+    };
+  }, [accessToken]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -111,7 +151,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
     setError(null);
     void api.listChannelMessages(selectedChannelId, accessToken, undefined, 50).then((page) => {
       if (cancelled) return;
-      setMessages([...page.items].reverse());
+      setMessages((current) => mergeMessages([...page.items].reverse(), current));
       setMessageCursor(page.page.next_cursor);
     }).catch((reason) => {
       if (!cancelled) setError(messageForError(reason));
@@ -168,7 +208,32 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
   return {
     guilds, channels, messages, activeGuildId, selectedChannelId,
     loadingGuilds, loadingChannels, loadingMessages, sending,
-    hasOlderMessages: messageCursor !== null, loadingOlderMessages, error,
+    hasOlderMessages: messageCursor !== null, loadingOlderMessages, gatewayStatus, error: error ?? gatewayError,
     selectGuild, selectChannel, sendMessage, loadOlderMessages, retry,
   };
+}
+
+function applyGatewayEvent(messages: Message[], event: MessageGatewayEvent): Message[] {
+  if (event.t === "MESSAGE_DELETE") {
+    return messages.filter((message) => message.id !== event.d.id);
+  }
+  const next: Message = {
+    ...event.d,
+    content: event.d.content ?? "メッセージ内容を表示する権限がありません。",
+  };
+  if (event.t === "MESSAGE_UPDATE") {
+    return messages.map((message) => message.id === next.id ? next : message);
+  }
+  return mergeMessages(messages, [next]);
+}
+
+function mergeMessages(primary: Message[], additional: Message[]): Message[] {
+  const byId = new Map(primary.map((message) => [message.id, message]));
+  for (const message of additional) {
+    if (!byId.has(message.id)) byId.set(message.id, message);
+  }
+  return [...byId.values()].sort((left, right) => {
+    const timeDifference = Date.parse(left.created_at) - Date.parse(right.created_at);
+    return timeDifference || left.id.localeCompare(right.id);
+  });
 }

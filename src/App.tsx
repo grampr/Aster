@@ -14,6 +14,7 @@ import {
 } from "./data";
 import { AuthGate } from "./features/auth/AuthGate";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
+import type { GatewayStatus } from "./features/chat/gateway";
 import { useChatWorkspace } from "./features/chat/useChatWorkspace";
 
 type Density = "compact" | "comfortable";
@@ -235,7 +236,7 @@ function AppearancePopover({ density, onDensity, accent, onAccent, membersVisibl
 function ChatPanel({
   channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend,
   loading = false, sending = false, error = null, enabled = true,
-  hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry,
+  hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry, gatewayStatus,
 }: {
   channelLabel: string;
   density: Density;
@@ -252,6 +253,7 @@ function ChatPanel({
   loadingOlderMessages?: boolean;
   onLoadOlder?: () => Promise<void>;
   onRetry?: () => void;
+  gatewayStatus?: GatewayStatus;
 }) {
   const [draft, setDraft] = useState("");
   const submit = async (event: FormEvent) => {
@@ -268,7 +270,15 @@ function ChatPanel({
   return (
     <main className={`chat-panel density-${density}`}>
       <header className="chat-header">
-        <button type="button" className="channel-heading"><Hash size={21} weight="bold" /><strong>{channelLabel}</strong><CaretDown size={15} /></button>
+        <div className="chat-context">
+          <button type="button" className="channel-heading"><Hash size={21} weight="bold" /><strong>{channelLabel}</strong><CaretDown size={15} /></button>
+          {gatewayStatus && gatewayStatus !== "idle" && gatewayStatus !== "stopped" && (
+            <span className={`gateway-status is-${gatewayStatus}`}>
+              <span />
+              {gatewayStatus === "connected" ? "リアルタイム" : gatewayStatus === "failed" ? "接続停止" : "再接続中"}
+            </span>
+          )}
+        </div>
         <div className="chat-tools">
           <IconButton label="ピン留め"><PushPin size={21} /></IconButton>
           <IconButton label="メンバーを招待"><UserPlus size={21} /></IconButton>
@@ -459,6 +469,7 @@ function DesktopWorkspace() {
         loadingOlderMessages={!isDemo && workspace.loadingOlderMessages}
         onLoadOlder={workspace.loadOlderMessages}
         onRetry={workspace.retry}
+        gatewayStatus={isDemo ? undefined : workspace.gatewayStatus}
       />
       {membersVisible && <ResizeHandle label="メンバーリスト幅を変更" onPointerDown={beginResize("member")} />}
       {membersVisible && <MemberPanel onClose={() => setMembersVisible(false)} onLogout={() => void logout()} />}
