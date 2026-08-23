@@ -379,6 +379,48 @@ export interface paths {
         patch: operations["updateChannelMessage"];
         trace?: never;
     };
+    "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+                /**
+                 * @description URL EncodingしたUnicode絵文字です。初期VersionではCustom Emojiを受け付けません。
+                 * @example 👍
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * MessageにReactionを付ける
+         * @description 同じUserが同じ絵文字を複数回付けても1件として扱います。
+         *     Messageが指定したText Channelに属し、認証済みUserから参照できる場合だけ更新します。
+         */
+        put: operations["addMessageReaction"];
+        post?: never;
+        /**
+         * Messageから自分のReactionを外す
+         * @description Reactionが付いていない場合も成功として扱い、現在の集計を返します。
+         *     Messageが指定したText Channelに属し、認証済みUserから参照できる場合だけ更新します。
+         */
+        delete: operations["removeMessageReaction"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -715,6 +757,13 @@ export interface components {
          *         "created_at": "2026-08-17T06:10:00Z",
          *         "edited_at": null
          *       },
+         *       "reactions": [
+         *         {
+         *           "emoji": "👍",
+         *           "count": 3,
+         *           "me": true
+         *         }
+         *       ],
          *       "created_at": "2026-08-17T06:12:00Z",
          *       "edited_at": null
          *     }
@@ -736,6 +785,8 @@ export interface components {
              *     reply_to_message_idがnullでなく、このFieldがnullの場合、Clientは返信元を表示できない状態として扱います。
              */
             reply_to: components["schemas"]["MessageReply"] | null;
+            /** @description 絵文字ごとのReaction集計です。Reactionがない場合は空配列です。 */
+            reactions: components["schemas"]["MessageReaction"][];
             created_at: components["schemas"]["Timestamp"];
             /** @description 最後に本文を編集した時刻です。未編集の場合はnullです。 */
             edited_at: components["schemas"]["Timestamp"] | null;
@@ -757,6 +808,22 @@ export interface components {
             edited_at: components["schemas"]["Timestamp"] | null;
         };
         /**
+         * MessageReaction
+         * @description Messageに付いた同じ絵文字のReaction集計です。Message内ではcountが1以上の項目だけを返します。
+         * @example {
+         *       "emoji": "👍",
+         *       "count": 3,
+         *       "me": true
+         *     }
+         */
+        MessageReaction: {
+            emoji: components["schemas"]["ReactionEmoji"];
+            /** @description Operation完了後にこの絵文字が付いている件数です。解除Responseでは0になる場合があります。 */
+            count: number;
+            /** @description 認証済みUser自身がこのReactionを付けている場合はtrueです。 */
+            me: boolean;
+        };
+        /**
          * MessageList
          * @description Text ChannelのMessageを新しい順で返すPageです。
          * @example {
@@ -772,6 +839,7 @@ export interface components {
          *           "content": "10月24日で進める方向でよいでしょうか？",
          *           "reply_to_message_id": null,
          *           "reply_to": null,
+         *           "reactions": [],
          *           "created_at": "2026-08-17T06:12:00Z",
          *           "edited_at": null
          *         }
@@ -861,6 +929,12 @@ export interface components {
          * @example 0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0
          */
         RequestId: string;
+        /**
+         * ReactionEmoji
+         * @description Message Reactionに使うUnicode絵文字列です。Variation SelectorやZWJを含むSequence全体を一つの値として扱います。
+         * @example 👍
+         */
+        ReactionEmoji: string;
         /**
          * RefreshSessionRequest
          * @description Refresh Token を Rotation して Aster Session を更新する Request です。
@@ -1225,6 +1299,11 @@ export interface components {
          * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
          */
         MessageId: components["schemas"]["UUID"];
+        /**
+         * @description URL EncodingしたUnicode絵文字です。初期VersionではCustom Emojiを受け付けません。
+         * @example 👍
+         */
+        ReactionEmoji: components["schemas"]["ReactionEmoji"];
     };
     requestBodies: never;
     headers: {
@@ -2156,6 +2235,90 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    addMessageReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+                /**
+                 * @description URL EncodingしたUnicode絵文字です。初期VersionではCustom Emojiを受け付けません。
+                 * @example 👍
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 追加後のReaction集計です。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageReaction"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    removeMessageReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+                /**
+                 * @description 操作対象の Message ID です。
+                 * @example 0198b8f2-4f80-7e67-b250-b4051415e3c2
+                 */
+                message_id: components["parameters"]["MessageId"];
+                /**
+                 * @description URL EncodingしたUnicode絵文字です。初期VersionではCustom Emojiを受け付けません。
+                 * @example 👍
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 解除後のReaction集計です。最後の1件を外した場合はcountが0になります。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageReaction"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["ResourceNotFound"];
             429: components["responses"]["RateLimited"];
             default: components["responses"]["Error"];

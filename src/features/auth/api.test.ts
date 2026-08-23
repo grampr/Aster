@@ -111,6 +111,28 @@ describe("AsterApiClient", () => {
     expect(new Headers(calls[1].init?.headers).get("Authorization")).toBe("Bearer access");
   });
 
+  it("adds and removes an encoded message reaction", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ emoji: "👍", count: init?.method === "PUT" ? 1 : 0, me: init?.method === "PUT" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+
+    await client.addMessageReaction("channel/id", "message/id", "👍", "access");
+    await client.removeMessageReaction("channel/id", "message/id", "👍", "access");
+
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://aster.example/api/v1/channels/channel%2Fid/messages/message%2Fid/reactions/%F0%9F%91%8D",
+      "https://aster.example/api/v1/channels/channel%2Fid/messages/message%2Fid/reactions/%F0%9F%91%8D",
+    ]);
+    expect(calls.map((call) => call.init?.method)).toEqual(["PUT", "DELETE"]);
+    expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer access");
+  });
+
   it("starts Google Authorization Code + PKCE using the Protocol contract", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const transport: FetchTransport = async (input, init) => {

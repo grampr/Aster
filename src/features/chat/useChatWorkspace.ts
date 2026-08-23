@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GatewayMessageResource } from "../../generated/aster-gateway";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "../auth/api";
-import type { Channel, Guild, Message } from "../auth/types";
+import type { Channel, Guild, Message, MessageReaction } from "../auth/types";
 import { AsterGatewayClient, type GatewayStatus, type MessageGatewayEvent } from "./gateway";
 
 function messageForError(error: unknown): string {
@@ -28,6 +28,7 @@ export type ChatWorkspace = {
   sending: boolean;
   updatingMessageId: string | null;
   deletingMessageId: string | null;
+  reactingKey: string | null;
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
   gatewayStatus: GatewayStatus;
@@ -37,11 +38,12 @@ export type ChatWorkspace = {
   sendMessage: (content: string, replyToMessageId?: string) => Promise<void>;
   updateMessage: (messageId: string, content: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
+  toggleReaction: (messageId: string, emoji: string, reactedByMe: boolean) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
   retry: () => void;
 };
 
-export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
+export function useChatWorkspace(accessToken: string | null, currentUserId: string | null): ChatWorkspace {
   const api = useMemo(() => new AsterApiClient(), []);
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -54,6 +56,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
   const [sending, setSending] = useState(false);
   const [updatingMessageId, setUpdatingMessageId] = useState<string | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [reactingKey, setReactingKey] = useState<string | null>(null);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +90,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
         if (disposed) return;
         const channelId = event.d.channel_id;
         if (channelId !== selectedChannelIdRef.current) return;
-        setMessages((current) => applyGatewayEvent(current, event));
+        setMessages((current) => applyGatewayEvent(current, event, currentUserId));
       },
     });
     gateway.start();
@@ -95,7 +98,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
       disposed = true;
       gateway.stop();
     };
-  }, [accessToken]);
+  }, [accessToken, currentUserId]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -228,6 +231,24 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
     }
   }, [accessToken, api, deletingMessageId, selectedChannelId, updatingMessageId]);
 
+  const toggleReaction = useCallback(async (messageId: string, emoji: string, reactedByMe: boolean) => {
+    if (!accessToken || !selectedChannelId || reactingKey) return;
+    const key = `${messageId}:${emoji}`;
+    setReactingKey(key);
+    setError(null);
+    try {
+      const reaction = reactedByMe
+        ? await api.removeMessageReaction(selectedChannelId, messageId, emoji, accessToken)
+        : await api.addMessageReaction(selectedChannelId, messageId, emoji, accessToken);
+      setMessages((current) => applyReactionSummary(current, messageId, reaction));
+    } catch (reason) {
+      setError(messageForError(reason));
+      throw reason;
+    } finally {
+      setReactingKey(null);
+    }
+  }, [accessToken, api, reactingKey, selectedChannelId]);
+
   const loadOlderMessages = useCallback(async () => {
     if (!accessToken || !selectedChannelId || !messageCursor || loadingOlderMessages) return;
     setLoadingOlderMessages(true);
@@ -251,33 +272,54 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
 
   return {
     guilds, channels, messages, activeGuildId, selectedChannelId,
-    loadingGuilds, loadingChannels, loadingMessages, sending, updatingMessageId, deletingMessageId,
+    loadingGuilds, loadingChannels, loadingMessages, sending, updatingMessageId, deletingMessageId, reactingKey,
     hasOlderMessages: messageCursor !== null, loadingOlderMessages, gatewayStatus, error: error ?? gatewayError,
-    selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, loadOlderMessages, retry,
+    selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, toggleReaction, loadOlderMessages, retry,
   };
 }
 
-export function applyGatewayEvent(messages: Message[], event: MessageGatewayEvent): Message[] {
+export function applyGatewayEvent(messages: Message[], event: MessageGatewayEvent, currentUserId: string | null = null): Message[] {
   if (event.t === "MESSAGE_DELETE") {
     return applyMessageDelete(messages, event.d.id);
   }
-  const next = messageFromGateway(event.d);
+  if (event.t === "MESSAGE_REACTION_ADD" || event.t === "MESSAGE_REACTION_REMOVE") {
+    const current = messages.find((message) => message.id === event.d.message_id);
+    const existing = current?.reactions.find((reaction) => reaction.emoji === event.d.emoji);
+    return applyReactionSummary(messages, event.d.message_id, {
+      emoji: event.d.emoji,
+      count: event.d.count,
+      me: event.d.user_id === currentUserId ? event.t === "MESSAGE_REACTION_ADD" : (existing?.me ?? false),
+    });
+  }
+  const current = messages.find((message) => message.id === event.d.id);
+  const next = messageFromGateway(event.d, current?.reactions ?? []);
   if (event.t === "MESSAGE_UPDATE") {
     return applyMessageUpdate(messages, next);
   }
   return mergeMessages(messages, [next]);
 }
 
-function messageFromGateway(resource: GatewayMessageResource): Message {
+function messageFromGateway(resource: GatewayMessageResource, reactions: MessageReaction[]): Message {
   const hiddenContent = "メッセージ内容を表示する権限がありません。";
   return {
     ...resource,
+    reactions,
     content: resource.content ?? hiddenContent,
     reply_to: resource.reply_to ? {
       ...resource.reply_to,
       content: resource.reply_to.content ?? hiddenContent,
     } : null,
   };
+}
+
+export function applyReactionSummary(messages: Message[], messageId: string, reaction: MessageReaction): Message[] {
+  return messages.map((message) => {
+    if (message.id !== messageId) return message;
+    const reactions = message.reactions.filter((item) => item.emoji !== reaction.emoji);
+    if (reaction.count > 0) reactions.push(reaction);
+    reactions.sort((left, right) => left.emoji.localeCompare(right.emoji));
+    return { ...message, reactions };
+  });
 }
 
 export function applyMessageUpdate(messages: Message[], updated: Message): Message[] {

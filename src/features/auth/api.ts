@@ -9,6 +9,7 @@ import type {
   GoogleExchangeRequest,
   LogoutRequest,
   Message,
+  MessageReaction,
   MessageList,
   RefreshSessionRequest,
   SessionTokenResponse,
@@ -121,6 +122,18 @@ export class AsterApiClient {
 
   async deleteChannelMessage(channelId: string, messageId: string, accessToken: string): Promise<void> {
     await this.request<void>(`/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, {
+      method: "DELETE",
+    }, accessToken);
+  }
+
+  addMessageReaction(channelId: string, messageId: string, emoji: string, accessToken: string): Promise<MessageReaction> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`, {
+      method: "PUT",
+    }, accessToken);
+  }
+
+  removeMessageReaction(channelId: string, messageId: string, emoji: string, accessToken: string): Promise<MessageReaction> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`, {
       method: "DELETE",
     }, accessToken);
   }

@@ -2,12 +2,14 @@ import type {
   AsterGatewayMessage,
   MessageCreateEvent,
   MessageDeleteEvent,
+  MessageReactionAddEvent,
+  MessageReactionRemoveEvent,
   MessageUpdateEvent,
 } from "../../generated/aster-gateway";
 import { GatewayEvent, GatewayIntent, GatewayOpcode } from "../../generated/aster-gateway-constants";
 import { configuredApiOrigin, normalizeApiOrigin } from "../auth/api";
 
-export type MessageGatewayEvent = MessageCreateEvent | MessageUpdateEvent | MessageDeleteEvent;
+export type MessageGatewayEvent = MessageCreateEvent | MessageUpdateEvent | MessageDeleteEvent | MessageReactionAddEvent | MessageReactionRemoveEvent;
 export type GatewayStatus = "idle" | "connecting" | "connected" | "reconnecting" | "failed" | "stopped";
 
 type GatewaySocket = {
@@ -41,7 +43,7 @@ type AsterGatewayClientOptions = {
 const socketOpen = 1;
 const reconnectBaseDelayMs = 1_000;
 const reconnectMaximumDelayMs = 30_000;
-const requestedIntents = GatewayIntent.GUILDS | GatewayIntent.GUILD_MESSAGES | GatewayIntent.MESSAGE_CONTENT;
+const requestedIntents = GatewayIntent.GUILDS | GatewayIntent.GUILD_MESSAGES | GatewayIntent.MESSAGE_CONTENT | GatewayIntent.REACTIONS;
 
 const defaultScheduler: GatewayScheduler = {
   setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
@@ -236,6 +238,8 @@ export class AsterGatewayClient {
       message.t === GatewayEvent.MESSAGE_CREATE
       || message.t === GatewayEvent.MESSAGE_UPDATE
       || message.t === GatewayEvent.MESSAGE_DELETE
+      || message.t === GatewayEvent.MESSAGE_REACTION_ADD
+      || message.t === GatewayEvent.MESSAGE_REACTION_REMOVE
     ) {
       this.onEvent(message);
     }
