@@ -94,9 +94,9 @@ npm run test:sites
 npm run tauri:check
 ```
 
-現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージ送信、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
+現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信・編集・削除、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
 
-Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿、Cursorによる過去Messageの追加取得、Gatewayによる作成・更新・削除のリアルタイム反映に対応しています。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで従来のサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
+Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。自分のMessageの投稿・インライン編集・確認付き削除、Cursorによる過去Messageの追加取得、Gatewayによる作成・更新・削除のリアルタイム反映に対応しています。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで同じ操作を含むサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
 
 ### API接続先
 

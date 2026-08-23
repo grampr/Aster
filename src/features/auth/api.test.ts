@@ -82,6 +82,35 @@ describe("AsterApiClient", () => {
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ content: "hello" });
   });
 
+  it("updates and deletes a message through the nested Protocol path", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      if (init?.method === "DELETE") return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({
+        id: "message/id",
+        channel_id: "channel/id",
+        author: { id: "user-1", display_name: "Alice", avatar_url: null },
+        content: "edited",
+        created_at: "2026-08-23T00:00:00Z",
+        edited_at: "2026-08-23T00:01:00Z",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+
+    await client.updateChannelMessage("channel/id", "message/id", { content: "edited" }, "access");
+    await client.deleteChannelMessage("channel/id", "message/id", "access");
+
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://aster.example/api/v1/channels/channel%2Fid/messages/message%2Fid",
+      "https://aster.example/api/v1/channels/channel%2Fid/messages/message%2Fid",
+    ]);
+    expect(calls.map((call) => call.init?.method)).toEqual(["PATCH", "DELETE"]);
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ content: "edited" });
+    expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer access");
+    expect(new Headers(calls[1].init?.headers).get("Authorization")).toBe("Bearer access");
+  });
+
   it("starts Google Authorization Code + PKCE using the Protocol contract", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const transport: FetchTransport = async (input, init) => {

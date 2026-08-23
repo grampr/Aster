@@ -16,6 +16,7 @@ export type ChannelList = components["schemas"]["ChannelList"];
 export type Message = components["schemas"]["Message"];
 export type MessageList = components["schemas"]["MessageList"];
 export type CreateMessageRequest = components["schemas"]["CreateMessageRequest"];
+export type UpdateMessageRequest = components["schemas"]["UpdateMessageRequest"];
 
 export type AuthStatus = "checking" | "authenticated" | "unauthenticated";
 export type GoogleAuthStatus = "idle" | "opening" | "waiting" | "exchanging";

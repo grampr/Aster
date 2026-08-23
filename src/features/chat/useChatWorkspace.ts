@@ -25,6 +25,8 @@ export type ChatWorkspace = {
   loadingChannels: boolean;
   loadingMessages: boolean;
   sending: boolean;
+  updatingMessageId: string | null;
+  deletingMessageId: string | null;
   hasOlderMessages: boolean;
   loadingOlderMessages: boolean;
   gatewayStatus: GatewayStatus;
@@ -32,6 +34,8 @@ export type ChatWorkspace = {
   selectGuild: (guildId: string) => void;
   selectChannel: (channelId: string) => void;
   sendMessage: (content: string) => Promise<void>;
+  updateMessage: (messageId: string, content: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
   retry: () => void;
 };
@@ -47,6 +51,8 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [updatingMessageId, setUpdatingMessageId] = useState<string | null>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +134,9 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
       if (cancelled) return;
       setChannels(page.items);
       const firstTextChannel = page.items.find((channel) => channel.type === "TEXT");
-      setSelectedChannelId(firstTextChannel?.id ?? null);
+      const nextChannelId = firstTextChannel?.id ?? null;
+      selectedChannelIdRef.current = nextChannelId;
+      setSelectedChannelId(nextChannelId);
     }).catch((reason) => {
       if (!cancelled) setError(messageForError(reason));
     }).finally(() => {
@@ -166,6 +174,7 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
   }, []);
 
   const selectChannel = useCallback((channelId: string) => {
+    selectedChannelIdRef.current = channelId;
     setSelectedChannelId(channelId);
   }, []);
 
@@ -183,6 +192,37 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
       setSending(false);
     }
   }, [accessToken, api, selectedChannelId, sending]);
+
+  const updateMessage = useCallback(async (messageId: string, content: string) => {
+    const nextContent = content.trim();
+    if (!accessToken || !selectedChannelId || !nextContent || updatingMessageId || deletingMessageId) return;
+    setUpdatingMessageId(messageId);
+    setError(null);
+    try {
+      const updated = await api.updateChannelMessage(selectedChannelId, messageId, { content: nextContent }, accessToken);
+      setMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
+    } catch (reason) {
+      setError(messageForError(reason));
+      throw reason;
+    } finally {
+      setUpdatingMessageId(null);
+    }
+  }, [accessToken, api, deletingMessageId, selectedChannelId, updatingMessageId]);
+
+  const deleteMessage = useCallback(async (messageId: string) => {
+    if (!accessToken || !selectedChannelId || deletingMessageId || updatingMessageId) return;
+    setDeletingMessageId(messageId);
+    setError(null);
+    try {
+      await api.deleteChannelMessage(selectedChannelId, messageId, accessToken);
+      setMessages((current) => current.filter((message) => message.id !== messageId));
+    } catch (reason) {
+      setError(messageForError(reason));
+      throw reason;
+    } finally {
+      setDeletingMessageId(null);
+    }
+  }, [accessToken, api, deletingMessageId, selectedChannelId, updatingMessageId]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!accessToken || !selectedChannelId || !messageCursor || loadingOlderMessages) return;
@@ -207,9 +247,9 @@ export function useChatWorkspace(accessToken: string | null): ChatWorkspace {
 
   return {
     guilds, channels, messages, activeGuildId, selectedChannelId,
-    loadingGuilds, loadingChannels, loadingMessages, sending,
+    loadingGuilds, loadingChannels, loadingMessages, sending, updatingMessageId, deletingMessageId,
     hasOlderMessages: messageCursor !== null, loadingOlderMessages, gatewayStatus, error: error ?? gatewayError,
-    selectGuild, selectChannel, sendMessage, loadOlderMessages, retry,
+    selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, loadOlderMessages, retry,
   };
 }
 

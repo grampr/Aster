@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import type { CSSProperties, ComponentProps, FormEvent, PointerEvent, ReactNode } from "react";
+import type { CSSProperties, ComponentProps, FormEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import {
   Archive, ArrowSquareOut, At, CaretDown, CaretUp, Check, DownloadSimple,
   FunnelSimple, Gear, Hash, Headphones, ImageSquare, Info, ListPlus,
   MagnifyingGlass, Microphone, MicrophoneSlash, PaperPlaneTilt, Plus,
   PushPin, SlidersHorizontal, Smiley, SpeakerHigh, TextAa, UserPlus,
   Users, Waveform, X, ThumbsUp, PhoneDisconnect, ArrowBendUpLeft,
-  SignOut,
+  SignOut, PencilSimple, Trash,
 } from "@phosphor-icons/react";
 import {
   assets, channels as demoChannels, guilds as demoGuilds, initialMessages, members,
@@ -237,6 +237,7 @@ function ChatPanel({
   channelLabel, density, settingsOpen, onSettings, appearance, messages, onSend,
   loading = false, sending = false, error = null, enabled = true,
   hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry, gatewayStatus,
+  onUpdate, onDelete, updatingMessageId = null, deletingMessageId = null,
 }: {
   channelLabel: string;
   density: Density;
@@ -254,6 +255,10 @@ function ChatPanel({
   onLoadOlder?: () => Promise<void>;
   onRetry?: () => void;
   gatewayStatus?: GatewayStatus;
+  onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
+  onDelete?: (messageId: ChatMessage["id"]) => Promise<void>;
+  updatingMessageId?: string | null;
+  deletingMessageId?: string | null;
 }) {
   const [draft, setDraft] = useState("");
   const submit = async (event: FormEvent) => {
@@ -295,7 +300,16 @@ function ChatPanel({
         {!loading && enabled && messages.length === 0 && <p className="message-state">まだメッセージはありません。最初のメッセージを送ってみましょう。</p>}
         {!loading && !enabled && <p className="message-state">テキストチャンネルを選択してください。</p>}
         {messages.length > 0 && <div className="date-divider"><span>メッセージ</span></div>}
-        {messages.map((message) => <MessageGroup key={message.id} message={message} />)}
+        {messages.map((message) => (
+          <MessageGroup
+            key={message.id}
+            message={message}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            updating={String(message.id) === updatingMessageId}
+            deleting={String(message.id) === deletingMessageId}
+          />
+        ))}
       </div>
       <form className="composer" onSubmit={submit}>
         <textarea disabled={!enabled || sending} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={enabled ? `#${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
@@ -314,13 +328,77 @@ function ChatPanel({
   );
 }
 
-function MessageGroup({ message }: { message: ChatMessage }) {
+function MessageGroup({ message, onUpdate, onDelete, updating, deleting }: {
+  message: ChatMessage;
+  onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
+  onDelete?: (messageId: ChatMessage["id"]) => Promise<void>;
+  updating: boolean;
+  deleting: boolean;
+}) {
+  const originalContent = message.lines.join("\n");
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(originalContent);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const beginEditing = () => {
+    setConfirmingDelete(false);
+    setEditDraft(originalContent);
+    setEditing(true);
+  };
+  const cancelEditing = () => {
+    setEditDraft(originalContent);
+    setEditing(false);
+  };
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    const content = editDraft.trim();
+    if (!onUpdate || !content || content === originalContent || updating) return;
+    try {
+      await onUpdate(message.id, content);
+      setEditing(false);
+    } catch {
+      // The workspace notice reports the failure while preserving the draft.
+    }
+  };
+  const handleEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") cancelEditing();
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  };
+  const confirmDelete = async () => {
+    if (!onDelete || deleting) return;
+    try {
+      await onDelete(message.id);
+    } catch {
+      // The workspace notice reports the failure and keeps confirmation visible.
+    }
+  };
+
   return (
     <article className="message-group">
       <Avatar src={message.avatar} size="large" />
       <div className="message-content">
-        <div className="message-meta"><strong>{message.author}</strong><time>{message.time}</time></div>
-        {message.lines.map((line, index) => <p key={`${message.id}-${index}`}>{line}</p>)}
+        <div className="message-meta"><strong>{message.author}</strong><time>{message.time}</time>{message.edited && <span className="message-edited">編集済み</span>}</div>
+        {editing ? (
+          <form className="message-edit-form" onSubmit={submitEdit}>
+            <textarea
+              autoFocus
+              rows={Math.max(2, message.lines.length)}
+              value={editDraft}
+              onChange={(event) => setEditDraft(event.target.value)}
+              onKeyDown={handleEditKeyDown}
+              aria-label="メッセージを編集"
+              disabled={updating}
+            />
+            <div className="message-inline-actions">
+              <span>Escでキャンセル ・ ⌘/Ctrl + Enterで保存</span>
+              <button type="button" onClick={cancelEditing} disabled={updating}>キャンセル</button>
+              <button className="is-primary" type="submit" disabled={updating || !editDraft.trim() || editDraft.trim() === originalContent}>{updating ? "保存中…" : "保存"}</button>
+            </div>
+          </form>
+        ) : message.lines.map((line, index) => <p key={`${message.id}-${index}`}>{line}</p>)}
         {message.reply && (
           <>
             {message.threadLabel && <div className="thread-label"><ArrowBendUpLeft size={16} />{message.threadLabel}</div>}
@@ -340,7 +418,20 @@ function MessageGroup({ message }: { message: ChatMessage }) {
           </div>
         )}
         {message.reaction && <button type="button" className="reaction"><ThumbsUp size={15} weight="fill" />{message.reaction}</button>}
+        {confirmingDelete && (
+          <div className="message-delete-confirm" role="alert">
+            <span>このメッセージを削除しますか？</span>
+            <button type="button" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
+            <button className="is-danger" type="button" onClick={() => void confirmDelete()} disabled={deleting}>{deleting ? "削除中…" : "削除"}</button>
+          </div>
+        )}
       </div>
+      {message.editable && !editing && !confirmingDelete && (
+        <div className="message-actions" aria-label="メッセージ操作">
+          <IconButton label="メッセージを編集" onClick={beginEditing}><PencilSimple size={17} /></IconButton>
+          <IconButton label="メッセージを削除" className="message-delete-button" onClick={() => setConfirmingDelete(true)}><Trash size={17} /></IconButton>
+        </div>
+      )}
     </article>
   );
 }
@@ -407,12 +498,18 @@ function DesktopWorkspace() {
   }));
   const activeGuild = isDemo ? demoActiveGuild : workspace.activeGuildId;
   const selectedChannel = isDemo ? demoSelectedChannel : workspace.selectedChannelId;
-  const visibleMessages: ChatMessage[] = isDemo ? demoMessages : workspace.messages.map((message) => ({
+  const visibleMessages: ChatMessage[] = isDemo ? demoMessages.map((message) => ({
+    ...message,
+    editable: message.editable ?? message.author === "Aster",
+  })) : workspace.messages.map((message) => ({
     id: message.id,
+    authorId: message.author.id,
     author: message.author.display_name,
     avatar: message.author.avatar_url ?? assets.mountain,
     time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(message.created_at)),
     lines: [message.content],
+    editable: message.author.id === user?.id,
+    edited: message.edited_at !== null,
   }));
   const guildName = visibleGuilds.find((guild) => guild.id === activeGuild)?.name ?? (workspace.loadingGuilds ? "読み込み中…" : "コミュニティがありません");
   const channelLabel = visibleChannels.find((channel) => channel.id === selectedChannel)?.label ?? "チャンネル未選択";
@@ -444,8 +541,18 @@ function DesktopWorkspace() {
     if (!isDemo) return workspace.sendMessage(body);
     setDemoMessages((current) => [...current, {
       id: Date.now(), author: user?.display_name ?? "Aster", avatar: user?.avatar_url ?? assets.mountain,
-      time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()), lines: [body],
+      time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()), lines: [body], editable: true,
     }]);
+  };
+
+  const updateMessage = async (messageId: ChatMessage["id"], content: string) => {
+    if (!isDemo) return workspace.updateMessage(String(messageId), content);
+    setDemoMessages((current) => current.map((message) => message.id === messageId ? { ...message, lines: [content], edited: true } : message));
+  };
+
+  const deleteMessage = async (messageId: ChatMessage["id"]) => {
+    if (!isDemo) return workspace.deleteMessage(String(messageId));
+    setDemoMessages((current) => current.filter((message) => message.id !== messageId));
   };
 
   return (
@@ -461,6 +568,10 @@ function DesktopWorkspace() {
         appearance={{ density, onDensity: setDensity, accent, onAccent: setAccent, membersVisible, onMembersVisible: setMembersVisible, channelWidth, onChannelWidth: setChannelWidth, onClose: () => setSettingsOpen(false) }}
         messages={visibleMessages}
         onSend={sendMessage}
+        onUpdate={updateMessage}
+        onDelete={deleteMessage}
+        updatingMessageId={isDemo ? null : workspace.updatingMessageId}
+        deletingMessageId={isDemo ? null : workspace.deletingMessageId}
         loading={!isDemo && workspace.loadingMessages}
         sending={!isDemo && workspace.sending}
         error={isDemo ? null : workspace.error}
