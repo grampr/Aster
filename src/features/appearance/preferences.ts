@@ -1,4 +1,5 @@
 export type Density = "compact" | "comfortable";
+export type FontFamily = "system" | "gothic" | "rounded" | "serif";
 
 export type AppearancePreferences = {
   density: Density;
@@ -8,9 +9,33 @@ export type AppearancePreferences = {
   memberWidth: number;
   fontSizeDelta: number;
   iconSizePercent: number;
+  fontFamily: FontFamily;
 };
 
 export const accentOptions = ["#1687f8", "#24b47e", "#7557e8", "#ff8a34", "#ec3e78", "#7c8798"] as const;
+
+export const fontOptions: ReadonlyArray<{ value: FontFamily; label: string; css: string }> = [
+  {
+    value: "system",
+    label: "システム標準",
+    css: 'Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif',
+  },
+  {
+    value: "gothic",
+    label: "ゴシック",
+    css: '"Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif',
+  },
+  {
+    value: "rounded",
+    label: "丸ゴシック",
+    css: '"Hiragino Maru Gothic ProN", "Yu Gothic", Meiryo, sans-serif',
+  },
+  {
+    value: "serif",
+    label: "明朝",
+    css: '"Hiragino Mincho ProN", "Yu Mincho", serif',
+  },
+];
 
 export const defaultAppearancePreferences: AppearancePreferences = {
   density: "compact",
@@ -20,6 +45,7 @@ export const defaultAppearancePreferences: AppearancePreferences = {
   memberWidth: 286,
   fontSizeDelta: 0,
   iconSizePercent: 100,
+  fontFamily: "system",
 };
 
 const storageKey = "aster.appearance.v1";
@@ -48,6 +74,9 @@ export function normalizeAppearancePreferences(value: unknown): AppearancePrefer
     memberWidth: clampedNumber(candidate.memberWidth, defaultAppearancePreferences.memberWidth, 220, 360),
     fontSizeDelta: Math.round(clampedNumber(candidate.fontSizeDelta, defaultAppearancePreferences.fontSizeDelta, -2, 3)),
     iconSizePercent: Math.round(clampedNumber(candidate.iconSizePercent, defaultAppearancePreferences.iconSizePercent, 85, 125) / 5) * 5,
+    fontFamily: fontOptions.some((option) => option.value === candidate.fontFamily)
+      ? candidate.fontFamily as FontFamily
+      : defaultAppearancePreferences.fontFamily,
   };
 }
 
