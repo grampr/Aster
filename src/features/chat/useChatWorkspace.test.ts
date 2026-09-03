@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../auth/types";
-import { applyGatewayEvent, applyMessageDelete, applyMessageUpdate } from "./useChatWorkspace";
+import { applyGatewayEvent, applyMessageDelete, applyMessageUpdate, applyReactionSummary } from "./useChatWorkspace";
 
 const source: Message = {
   id: "message-1",
@@ -9,6 +9,7 @@ const source: Message = {
   content: "元の本文",
   reply_to_message_id: null,
   reply_to: null,
+  reactions: [],
   created_at: "2026-08-23T00:00:00Z",
   edited_at: null,
 };
@@ -27,6 +28,7 @@ const reply: Message = {
     created_at: source.created_at,
     edited_at: source.edited_at,
   },
+  reactions: [],
   created_at: "2026-08-23T00:01:00Z",
   edited_at: null,
 };
@@ -62,5 +64,33 @@ describe("message reply state", () => {
     });
 
     expect(messages[1].reply_to?.content).toBe("Gateway編集");
+  });
+});
+
+describe("message reaction state", () => {
+  it("applies an authoritative REST reaction summary", () => {
+    const messages = applyReactionSummary([source], source.id, { emoji: "👍", count: 2, me: true });
+    expect(messages[0].reactions).toEqual([{ emoji: "👍", count: 2, me: true }]);
+  });
+
+  it("uses Gateway counts without adding replayed events twice", () => {
+    const event = {
+      op: 0 as const,
+      t: "MESSAGE_REACTION_ADD" as const,
+      s: 3,
+      d: { message_id: source.id, channel_id: source.channel_id, user_id: "user-1", emoji: "👍", count: 1 },
+    };
+    const once = applyGatewayEvent([source], event, "user-1");
+    const replayed = applyGatewayEvent(once, { ...event, s: 4 }, "user-1");
+    expect(replayed[0].reactions).toEqual([{ emoji: "👍", count: 1, me: true }]);
+  });
+
+  it("removes a zero-count reaction after a Gateway removal", () => {
+    const reacted = { ...source, reactions: [{ emoji: "👍", count: 1, me: true }] };
+    const messages = applyGatewayEvent([reacted], {
+      op: 0, t: "MESSAGE_REACTION_REMOVE", s: 4,
+      d: { message_id: source.id, channel_id: source.channel_id, user_id: "user-1", emoji: "👍", count: 0 },
+    }, "user-1");
+    expect(messages[0].reactions).toEqual([]);
   });
 });

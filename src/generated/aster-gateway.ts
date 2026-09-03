@@ -19,7 +19,9 @@ export type AsterGatewayMessage =
   | InvalidSessionMessage
   | MessageCreateEvent
   | MessageUpdateEvent
-  | MessageDeleteEvent;
+  | MessageDeleteEvent
+  | MessageReactionAddEvent
+  | MessageReactionRemoveEvent;
 /**
  * 購読する Gateway Event 群を表す32-bit Bitfield です。未割り当て Bit は Server が意味を定義するまで使用しません。
  */
@@ -307,4 +309,65 @@ export interface MessageDeleteEvent {
      */
     channel_id: string;
   };
+}
+/**
+ * ServerがREACTIONS Intentを購読中のClientまたはBotへ、Message Reactionの追加を配信します。
+ */
+export interface MessageReactionAddEvent {
+  /**
+   * Server が Event を配信します。
+   */
+  op: 0;
+  /**
+   * MessageにReactionが追加されたことを通知します。
+   */
+  t: "MESSAGE_REACTION_ADD";
+  /**
+   * Gateway Session内で単調増加するEvent Sequenceです。
+   */
+  s: number;
+  d: GatewayMessageReactionEventResource;
+}
+/**
+ * Message Reaction操作後の識別情報と集計です。countを現在値として適用することで再配信を安全に処理できます。
+ */
+export interface GatewayMessageReactionEventResource {
+  /**
+   * Reaction対象のMessage IDです。
+   */
+  message_id: string;
+  /**
+   * Messageが属するText Channel IDです。
+   */
+  channel_id: string;
+  /**
+   * Reactionを追加または解除したUser IDです。
+   */
+  user_id: string;
+  /**
+   * 操作対象のUnicode絵文字列です。
+   */
+  emoji: string;
+  /**
+   * 操作完了後にこの絵文字が付いている件数です。
+   */
+  count: number;
+}
+/**
+ * ServerがREACTIONS Intentを購読中のClientまたはBotへ、Message Reactionの解除を配信します。
+ */
+export interface MessageReactionRemoveEvent {
+  /**
+   * Server が Event を配信します。
+   */
+  op: 0;
+  /**
+   * MessageからReactionが解除されたことを通知します。
+   */
+  t: "MESSAGE_REACTION_REMOVE";
+  /**
+   * Gateway Session内で単調増加するEvent Sequenceです。
+   */
+  s: number;
+  d: GatewayMessageReactionEventResource;
 }

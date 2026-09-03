@@ -27,7 +27,7 @@ export type ChatMessage = {
   threadLabel?: string;
   afterReply?: string;
   attachment?: boolean;
-  reaction?: number;
+  reactions?: Array<{ emoji: string; count: number; me: boolean }>;
   editable?: boolean;
   edited?: boolean;
 };
@@ -87,7 +87,7 @@ export const initialMessages: ChatMessage[] = [
       "みなさん、おはようございます！",
       "先日のミーティングの続きで、イベントの具体的な内容を決めたいと思います。まずは候補日程の確認からお願いします。",
     ],
-    reaction: 2,
+    reactions: [{ emoji: "👍", count: 2, me: false }],
   },
   {
     id: 2,
@@ -113,7 +113,7 @@ export const initialMessages: ChatMessage[] = [
     },
     threadLabel: "1件の返信",
     afterReply: "はい、問題ないです！",
-    reaction: 1,
+    reactions: [{ emoji: "👍", count: 1, me: true }],
   },
   {
     id: 4,
@@ -122,6 +122,6 @@ export const initialMessages: ChatMessage[] = [
     time: "10:22",
     lines: ["チラシのドラフトを作ってみました。ご確認お願いします〜"],
     attachment: true,
-    reaction: 1,
+    reactions: [{ emoji: "👍", count: 1, me: false }],
   },
 ];

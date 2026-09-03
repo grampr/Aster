@@ -14,6 +14,7 @@ export type GuildList = components["schemas"]["GuildList"];
 export type Channel = components["schemas"]["Channel"];
 export type ChannelList = components["schemas"]["ChannelList"];
 export type Message = components["schemas"]["Message"];
+export type MessageReaction = components["schemas"]["MessageReaction"];
 export type MessageList = components["schemas"]["MessageList"];
 export type CreateMessageRequest = components["schemas"]["CreateMessageRequest"];
 export type UpdateMessageRequest = components["schemas"]["UpdateMessageRequest"];
