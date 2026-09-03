@@ -21,7 +21,8 @@ export type AsterGatewayMessage =
   | MessageUpdateEvent
   | MessageDeleteEvent
   | MessageReactionAddEvent
-  | MessageReactionRemoveEvent;
+  | MessageReactionRemoveEvent
+  | TypingStartEvent;
 /**
  * 購読する Gateway Event 群を表す32-bit Bitfield です。未割り当て Bit は Server が意味を定義するまで使用しません。
  */
@@ -370,4 +371,36 @@ export interface MessageReactionRemoveEvent {
    */
   s: number;
   d: GatewayMessageReactionEventResource;
+}
+/**
+ * ServerがTYPING Intentを購読中のClientまたはBotへ、Text Channelの入力開始または継続を配信します。
+ */
+export interface TypingStartEvent {
+  /**
+   * Server が Event を配信します。
+   */
+  op: 0;
+  /**
+   * Text ChannelでUserが入力を開始または継続したことを通知します。
+   */
+  t: "TYPING_START";
+  /**
+   * Gateway Session内で単調増加するEvent Sequenceです。
+   */
+  s: number;
+  d: GatewayTypingStartResource;
+}
+/**
+ * Text Channelで入力を開始または継続したUserと、その通知時刻です。
+ */
+export interface GatewayTypingStartResource {
+  /**
+   * 入力中のText Channel IDです。
+   */
+  channel_id: string;
+  user: GatewayUserSummary;
+  /**
+   * Serverが入力開始または継続を受け付けた時刻です。
+   */
+  started_at: string;
 }

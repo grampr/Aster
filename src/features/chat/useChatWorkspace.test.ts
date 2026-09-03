@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../auth/types";
-import { applyGatewayEvent, applyMessageDelete, applyMessageUpdate, applyReactionSummary } from "./useChatWorkspace";
+import { applyGatewayEvent, applyMessageDelete, applyMessageUpdate, applyReactionSummary, upsertTypingUser } from "./useChatWorkspace";
 
 const source: Message = {
   id: "message-1",
@@ -64,6 +64,19 @@ describe("message reply state", () => {
     });
 
     expect(messages[1].reply_to?.content).toBe("Gateway編集");
+  });
+});
+
+describe("typing user state", () => {
+  it("adds a new user and refreshes an existing user without changing order", () => {
+    const alice = { id: "user-1", display_name: "Alice", avatar_url: null };
+    const bob = { id: "user-2", display_name: "Bob", avatar_url: null };
+
+    expect(upsertTypingUser([alice], bob)).toEqual([alice, bob]);
+    expect(upsertTypingUser([alice, bob], { ...alice, display_name: "Alice Updated" })).toEqual([
+      { ...alice, display_name: "Alice Updated" },
+      bob,
+    ]);
   });
 });
 

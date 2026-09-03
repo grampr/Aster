@@ -41,6 +41,12 @@ function IconButton({ label, active, onClick, children, className = "" }: { labe
   );
 }
 
+function typingLabel(names: string[]): string {
+  if (names.length === 1) return `${names[0]}が入力中…`;
+  if (names.length === 2) return `${names[0]}、${names[1]}が入力中…`;
+  return `${names[0]}、${names[1]}ほか${names.length - 2}人が入力中…`;
+}
+
 function GuildRail({ guilds, activeGuild, onSelect }: { guilds: ViewGuild[]; activeGuild: string | null; onSelect: (id: string) => void }) {
   return (
     <nav className="guild-rail" aria-label="コミュニティ">
@@ -239,6 +245,7 @@ function ChatPanel({
   loading = false, sending = false, error = null, enabled = true,
   hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry, gatewayStatus,
   onUpdate, onDelete, onToggleReaction, updatingMessageId = null, deletingMessageId = null, reactingKey = null,
+  typingNames = [], onTyping,
 }: {
   channelKey: string | null;
   channelLabel: string;
@@ -263,6 +270,8 @@ function ChatPanel({
   updatingMessageId?: string | null;
   deletingMessageId?: string | null;
   reactingKey?: string | null;
+  typingNames?: string[];
+  onTyping?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -321,6 +330,9 @@ function ChatPanel({
           />
         ))}
       </div>
+      <div className="typing-indicator" aria-live="polite">
+        {typingNames.length > 0 && <><PencilSimple size={13} weight="bold" /><span>{typingLabel(typingNames)}</span></>}
+      </div>
       <form className="composer" onSubmit={submit}>
         {replyingTo && (
           <div className="composer-reply">
@@ -329,7 +341,10 @@ function ChatPanel({
             <IconButton label="返信をキャンセル" onClick={() => setReplyingTo(null)}><X size={17} /></IconButton>
           </div>
         )}
-        <textarea disabled={!enabled || sending} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={enabled ? `#${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
+        <textarea disabled={!enabled || sending} value={draft} onChange={(event) => {
+          setDraft(event.target.value);
+          if (event.target.value.trim()) onTyping?.();
+        }} placeholder={enabled ? `#${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
         <div className="composer-actions">
           <div>
             <IconButton label="ファイルを追加"><Plus size={20} /></IconButton>
@@ -689,6 +704,8 @@ function DesktopWorkspace() {
         onLoadOlder={workspace.loadOlderMessages}
         onRetry={workspace.retry}
         gatewayStatus={isDemo ? undefined : workspace.gatewayStatus}
+        typingNames={isDemo ? ["みさき"] : workspace.typingUsers.map((typingUser) => typingUser.display_name)}
+        onTyping={isDemo ? undefined : workspace.notifyTyping}
       />
       {membersVisible && <ResizeHandle label="メンバーリスト幅を変更" onPointerDown={beginResize("member")} />}
       {membersVisible && <MemberPanel onClose={() => setMembersVisible(false)} onLogout={() => void logout()} />}
