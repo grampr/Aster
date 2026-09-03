@@ -14,12 +14,13 @@ import {
 } from "./data";
 import { AuthGate } from "./features/auth/AuthGate";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
+import {
+  accentOptions, defaultAppearancePreferences, loadAppearancePreferences, saveAppearancePreferences,
+  type Density,
+} from "./features/appearance/preferences";
 import type { GatewayStatus } from "./features/chat/gateway";
 import { useChatWorkspace } from "./features/chat/useChatWorkspace";
 
-type Density = "compact" | "comfortable";
-
-const accents = ["#1687f8", "#24b47e", "#7557e8", "#ff8a34", "#ec3e78", "#7c8798"];
 const reactionOptions = ["👍", "❤️", "😂", "🎉", "👀"];
 
 type ViewGuild = { id: string; name: string; image: string };
@@ -45,6 +46,11 @@ function typingLabel(names: string[]): string {
   if (names.length === 1) return `${names[0]}が入力中…`;
   if (names.length === 2) return `${names[0]}、${names[1]}が入力中…`;
   return `${names[0]}、${names[1]}ほか${names.length - 2}人が入力中…`;
+}
+
+function fontSizeLabel(delta: number): string {
+  if (delta === 0) return "標準";
+  return `${delta > 0 ? "+" : ""}${delta}px`;
 }
 
 function GuildRail({ guilds, activeGuild, onSelect }: { guilds: ViewGuild[]; activeGuild: string | null; onSelect: (id: string) => void }) {
@@ -202,7 +208,10 @@ function ResizeHandle({ label, onPointerDown }: { label: string; onPointerDown: 
   );
 }
 
-function AppearancePopover({ density, onDensity, accent, onAccent, membersVisible, onMembersVisible, channelWidth, onChannelWidth, onClose }: {
+function AppearancePopover({
+  density, onDensity, accent, onAccent, membersVisible, onMembersVisible,
+  channelWidth, onChannelWidth, fontSizeDelta, onFontSizeDelta, iconSizePercent, onIconSizePercent, onReset, onClose,
+}: {
   density: Density;
   onDensity: (value: Density) => void;
   accent: string;
@@ -211,6 +220,11 @@ function AppearancePopover({ density, onDensity, accent, onAccent, membersVisibl
   onMembersVisible: (value: boolean) => void;
   channelWidth: number;
   onChannelWidth: (value: number) => void;
+  fontSizeDelta: number;
+  onFontSizeDelta: (value: number) => void;
+  iconSizePercent: number;
+  onIconSizePercent: (value: number) => void;
+  onReset: () => void;
   onClose: () => void;
 }) {
   return (
@@ -222,7 +236,7 @@ function AppearancePopover({ density, onDensity, accent, onAccent, membersVisibl
       </div>
       <label className="control-label">アクセントカラー</label>
       <div className="accent-swatches">
-        {accents.map((color) => (
+        {accentOptions.map((color) => (
           <button key={color} type="button" className="accent-swatch" style={{ background: color }} onClick={() => onAccent(color)} aria-label={`アクセント ${color}`}>
             {accent === color && <Check size={18} color="#fff" weight="bold" />}
           </button>
@@ -233,9 +247,18 @@ function AppearancePopover({ density, onDensity, accent, onAccent, membersVisibl
         <div className="toggle-control"><button type="button" className={`toggle ${membersVisible ? "is-on" : ""}`} onClick={() => onMembersVisible(!membersVisible)} aria-pressed={membersVisible}><span /></button><small>表示する</small></div>
       </div>
       <label className="range-control">
-        <span><span>チャンネル幅</span><output>{channelWidth}px</output></span>
-        <input type="range" min="220" max="380" value={channelWidth} onChange={(event) => onChannelWidth(Number(event.target.value))} />
+        <span><span>文字サイズ</span><output>{fontSizeLabel(fontSizeDelta)}</output></span>
+        <input type="range" min="-2" max="3" step="1" value={fontSizeDelta} onInput={(event) => onFontSizeDelta(Number(event.currentTarget.value))} />
       </label>
+      <label className="range-control">
+        <span><span>アイコンサイズ</span><output>{iconSizePercent}%</output></span>
+        <input type="range" min="85" max="125" step="5" value={iconSizePercent} onInput={(event) => onIconSizePercent(Number(event.currentTarget.value))} />
+      </label>
+      <label className="range-control">
+        <span><span>チャンネル幅</span><output>{channelWidth}px</output></span>
+        <input type="range" min="220" max="380" value={channelWidth} onInput={(event) => onChannelWidth(Number(event.currentTarget.value))} />
+      </label>
+      <button type="button" className="appearance-reset" onClick={onReset}>外観設定を標準に戻す</button>
     </aside>
   );
 }
@@ -566,12 +589,21 @@ function DesktopWorkspace() {
   const [demoActiveGuild, setDemoActiveGuild] = useState("aster");
   const [demoSelectedChannel, setDemoSelectedChannel] = useState("event");
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const [density, setDensity] = useState<Density>("compact");
-  const [accent, setAccent] = useState(accents[0]);
-  const [membersVisible, setMembersVisible] = useState(true);
-  const [channelWidth, setChannelWidth] = useState(330);
-  const [memberWidth, setMemberWidth] = useState(286);
+  const initialAppearance = useMemo(loadAppearancePreferences, []);
+  const [density, setDensity] = useState<Density>(initialAppearance.density);
+  const [accent, setAccent] = useState(initialAppearance.accent);
+  const [membersVisible, setMembersVisible] = useState(initialAppearance.membersVisible);
+  const [channelWidth, setChannelWidth] = useState(initialAppearance.channelWidth);
+  const [memberWidth, setMemberWidth] = useState(initialAppearance.memberWidth);
+  const [fontSizeDelta, setFontSizeDelta] = useState(initialAppearance.fontSizeDelta);
+  const [iconSizePercent, setIconSizePercent] = useState(initialAppearance.iconSizePercent);
   const [demoMessages, setDemoMessages] = useState(initialMessages);
+
+  useEffect(() => {
+    saveAppearancePreferences({
+      density, accent, membersVisible, channelWidth, memberWidth, fontSizeDelta, iconSizePercent,
+    });
+  }, [accent, channelWidth, density, fontSizeDelta, iconSizePercent, memberWidth, membersVisible]);
 
   const visibleGuilds: ViewGuild[] = isDemo ? demoGuilds : workspace.guilds.map((guild) => ({
     id: guild.id, name: guild.name, image: guild.icon_url ?? assets.logo,
@@ -626,7 +658,19 @@ function DesktopWorkspace() {
     "--channel-width": `${channelWidth}px`,
     "--member-width": `${memberWidth}px`,
     "--accent": accent,
-  } as CSSProperties), [channelWidth, memberWidth, accent]);
+    "--font-size-delta": `${fontSizeDelta}px`,
+    "--icon-scale": iconSizePercent / 100,
+  } as CSSProperties), [accent, channelWidth, fontSizeDelta, iconSizePercent, memberWidth]);
+
+  const resetAppearance = () => {
+    setDensity(defaultAppearancePreferences.density);
+    setAccent(defaultAppearancePreferences.accent);
+    setMembersVisible(defaultAppearancePreferences.membersVisible);
+    setChannelWidth(defaultAppearancePreferences.channelWidth);
+    setMemberWidth(defaultAppearancePreferences.memberWidth);
+    setFontSizeDelta(defaultAppearancePreferences.fontSizeDelta);
+    setIconSizePercent(defaultAppearancePreferences.iconSizePercent);
+  };
 
   const sendMessage = async (body: string, replyToMessageId?: ChatMessage["id"]) => {
     if (!isDemo) return workspace.sendMessage(body, replyToMessageId === undefined ? undefined : String(replyToMessageId));
@@ -686,7 +730,14 @@ function DesktopWorkspace() {
         density={density}
         settingsOpen={settingsOpen}
         onSettings={() => setSettingsOpen((value) => !value)}
-        appearance={{ density, onDensity: setDensity, accent, onAccent: setAccent, membersVisible, onMembersVisible: setMembersVisible, channelWidth, onChannelWidth: setChannelWidth, onClose: () => setSettingsOpen(false) }}
+        appearance={{
+          density, onDensity: setDensity, accent, onAccent: setAccent,
+          membersVisible, onMembersVisible: setMembersVisible,
+          channelWidth, onChannelWidth: setChannelWidth,
+          fontSizeDelta, onFontSizeDelta: setFontSizeDelta,
+          iconSizePercent, onIconSizePercent: setIconSizePercent,
+          onReset: resetAppearance, onClose: () => setSettingsOpen(false),
+        }}
         messages={visibleMessages}
         onSend={sendMessage}
         onUpdate={updateMessage}
