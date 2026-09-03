@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, ComponentProps, FormEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, ComponentProps, FormEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import {
   Archive, ArrowSquareOut, At, CaretDown, CaretUp, Check, DownloadSimple,
   FunnelSimple, Gear, Hash, Headphones, ImageSquare, Info, ListPlus,
   MagnifyingGlass, Microphone, MicrophoneSlash, PaperPlaneTilt, Plus,
   PushPin, SlidersHorizontal, Smiley, SpeakerHigh, TextAa, UserPlus,
   Users, Waveform, X, PhoneDisconnect, ArrowBendUpLeft,
-  SignOut, PencilSimple, Trash,
+  SignOut, PencilSimple, Trash, UploadSimple,
 } from "@phosphor-icons/react";
 import {
   assets, channels as demoChannels, guilds as demoGuilds, initialMessages, members,
@@ -15,8 +15,9 @@ import {
 import { AuthGate } from "./features/auth/AuthGate";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
 import {
-  accentOptions, defaultAppearancePreferences, fontOptions, loadAppearancePreferences, saveAppearancePreferences,
-  type Density, type FontFamily,
+  accentOptions, defaultAppearancePreferences, fontOptions, loadAppearancePreferences, parseAppearancePreferences,
+  saveAppearancePreferences, serializeAppearancePreferences,
+  type AppearancePreferences, type Density, type FontFamily,
 } from "./features/appearance/preferences";
 import type { GatewayStatus } from "./features/chat/gateway";
 import { useChatWorkspace } from "./features/chat/useChatWorkspace";
@@ -211,7 +212,7 @@ function ResizeHandle({ label, onPointerDown }: { label: string; onPointerDown: 
 function AppearancePopover({
   density, onDensity, accent, onAccent, membersVisible, onMembersVisible,
   channelWidth, onChannelWidth, fontSizeDelta, onFontSizeDelta, iconSizePercent, onIconSizePercent,
-  fontFamily, onFontFamily, onReset, onClose,
+  fontFamily, onFontFamily, onImport, exportHref, onReset, onClose,
 }: {
   density: Density;
   onDensity: (value: Density) => void;
@@ -227,9 +228,29 @@ function AppearancePopover({
   onIconSizePercent: (value: number) => void;
   fontFamily: FontFamily;
   onFontFamily: (value: FontFamily) => void;
+  onImport: (serialized: string) => void;
+  exportHref: string;
   onReset: () => void;
   onClose: () => void;
 }) {
+  const [transferStatus, setTransferStatus] = useState<"idle" | "imported" | "exported" | "error">("idle");
+
+  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      if (file.size > 64 * 1024) throw new Error("Appearance settings file is too large.");
+      onImport(await file.text());
+      setTransferStatus("imported");
+    } catch {
+      setTransferStatus("error");
+    } finally {
+      input.value = "";
+    }
+  };
+
   return (
     <aside className="appearance-popover" aria-label="外観設定">
       <div className="popover-heading"><strong>密度</strong><Info size={15} /><button type="button" onClick={onClose} aria-label="閉じる"><X size={16} /></button></div>
@@ -267,6 +288,23 @@ function AppearancePopover({
         <span><span>チャンネル幅</span><output>{channelWidth}px</output></span>
         <input type="range" min="220" max="380" value={channelWidth} onInput={(event) => onChannelWidth(Number(event.currentTarget.value))} />
       </label>
+      <div className="appearance-transfer" aria-label="設定ファイル">
+        <span className="control-label">設定ファイル</span>
+        <div>
+          <a href={exportHref} download="aster-appearance.json" onClick={() => setTransferStatus("exported")}><DownloadSimple size={17} /><span>書き出す</span></a>
+          <label>
+            <UploadSimple size={17} /><span>読み込む</span>
+            <input type="file" accept=".json,application/json" onChange={importFile} />
+          </label>
+        </div>
+        {transferStatus !== "idle" && (
+          <p className={transferStatus === "error" ? "is-error" : ""} role="status">
+            {transferStatus === "imported" && "設定を読み込みました。"}
+            {transferStatus === "exported" && "設定を書き出しました。"}
+            {transferStatus === "error" && "設定ファイルを読み込めませんでした。"}
+          </p>
+        )}
+      </div>
       <button type="button" className="appearance-reset" onClick={onReset}>外観設定を標準に戻す</button>
     </aside>
   );
@@ -607,12 +645,22 @@ function DesktopWorkspace() {
   const [fontSizeDelta, setFontSizeDelta] = useState(initialAppearance.fontSizeDelta);
   const [iconSizePercent, setIconSizePercent] = useState(initialAppearance.iconSizePercent);
   const [fontFamily, setFontFamily] = useState<FontFamily>(initialAppearance.fontFamily);
+  const [exportAppearanceHref, setExportAppearanceHref] = useState("");
   const [demoMessages, setDemoMessages] = useState(initialMessages);
 
   useEffect(() => {
     saveAppearancePreferences({
       density, accent, membersVisible, channelWidth, memberWidth, fontSizeDelta, iconSizePercent, fontFamily,
     });
+  }, [accent, channelWidth, density, fontFamily, fontSizeDelta, iconSizePercent, memberWidth, membersVisible]);
+
+  useEffect(() => {
+    const serialized = serializeAppearancePreferences({
+      density, accent, membersVisible, channelWidth, memberWidth, fontSizeDelta, iconSizePercent, fontFamily,
+    });
+    const url = URL.createObjectURL(new Blob([serialized], { type: "application/json" }));
+    setExportAppearanceHref(url);
+    return () => URL.revokeObjectURL(url);
   }, [accent, channelWidth, density, fontFamily, fontSizeDelta, iconSizePercent, memberWidth, membersVisible]);
 
   const visibleGuilds: ViewGuild[] = isDemo ? demoGuilds : workspace.guilds.map((guild) => ({
@@ -674,14 +722,22 @@ function DesktopWorkspace() {
   } as CSSProperties), [accent, channelWidth, fontFamily, fontSizeDelta, iconSizePercent, memberWidth]);
 
   const resetAppearance = () => {
-    setDensity(defaultAppearancePreferences.density);
-    setAccent(defaultAppearancePreferences.accent);
-    setMembersVisible(defaultAppearancePreferences.membersVisible);
-    setChannelWidth(defaultAppearancePreferences.channelWidth);
-    setMemberWidth(defaultAppearancePreferences.memberWidth);
-    setFontSizeDelta(defaultAppearancePreferences.fontSizeDelta);
-    setIconSizePercent(defaultAppearancePreferences.iconSizePercent);
-    setFontFamily(defaultAppearancePreferences.fontFamily);
+    applyAppearance(defaultAppearancePreferences);
+  };
+
+  const applyAppearance = (preferences: AppearancePreferences) => {
+    setDensity(preferences.density);
+    setAccent(preferences.accent);
+    setMembersVisible(preferences.membersVisible);
+    setChannelWidth(preferences.channelWidth);
+    setMemberWidth(preferences.memberWidth);
+    setFontSizeDelta(preferences.fontSizeDelta);
+    setIconSizePercent(preferences.iconSizePercent);
+    setFontFamily(preferences.fontFamily);
+  };
+
+  const importAppearance = (serialized: string) => {
+    applyAppearance(parseAppearancePreferences(serialized));
   };
 
   const sendMessage = async (body: string, replyToMessageId?: ChatMessage["id"]) => {
@@ -749,6 +805,7 @@ function DesktopWorkspace() {
           fontSizeDelta, onFontSizeDelta: setFontSizeDelta,
           iconSizePercent, onIconSizePercent: setIconSizePercent,
           fontFamily, onFontFamily: setFontFamily,
+          onImport: importAppearance, exportHref: exportAppearanceHref,
           onReset: resetAppearance, onClose: () => setSettingsOpen(false),
         }}
         messages={visibleMessages}
