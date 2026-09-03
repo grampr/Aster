@@ -49,6 +49,8 @@ export const defaultAppearancePreferences: AppearancePreferences = {
 };
 
 const storageKey = "aster.appearance.v1";
+const exportFormat = "aster.appearance";
+const exportVersion = 1;
 
 type AppearanceStorage = Pick<Storage, "getItem" | "setItem">;
 
@@ -97,4 +99,32 @@ export function saveAppearancePreferences(preferences: AppearancePreferences, st
   } catch {
     // Appearance persistence must not prevent the workspace from rendering.
   }
+}
+
+export function serializeAppearancePreferences(preferences: AppearancePreferences): string {
+  return JSON.stringify({
+    format: exportFormat,
+    version: exportVersion,
+    preferences: normalizeAppearancePreferences(preferences),
+  }, null, 2);
+}
+
+export function parseAppearancePreferences(serialized: string): AppearancePreferences {
+  let value: unknown;
+  try {
+    value = JSON.parse(serialized);
+  } catch {
+    throw new Error("Appearance settings must be valid JSON.");
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Appearance settings must be an object.");
+  }
+
+  const document = value as { format?: unknown; version?: unknown; preferences?: unknown };
+  if (document.format !== exportFormat || document.version !== exportVersion || !document.preferences || typeof document.preferences !== "object" || Array.isArray(document.preferences)) {
+    throw new Error("Unsupported appearance settings format.");
+  }
+
+  return normalizeAppearancePreferences(document.preferences);
 }

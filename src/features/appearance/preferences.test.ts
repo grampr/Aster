@@ -3,7 +3,9 @@ import {
   defaultAppearancePreferences,
   loadAppearancePreferences,
   normalizeAppearancePreferences,
+  parseAppearancePreferences,
   saveAppearancePreferences,
+  serializeAppearancePreferences,
 } from "./preferences";
 
 function memoryStorage(initial: string | null = null) {
@@ -55,5 +57,27 @@ describe("appearance preferences", () => {
     expect(loadAppearancePreferences(storage)).toEqual(preferences);
     expect(storage.value()).toContain('"iconSizePercent":120');
     expect(storage.value()).toContain('"fontFamily":"rounded"');
+  });
+
+  it("round-trips a versioned appearance settings document", () => {
+    const preferences = {
+      ...defaultAppearancePreferences,
+      accent: "#7557e8",
+      fontFamily: "serif" as const,
+      membersVisible: false,
+    };
+
+    const serialized = serializeAppearancePreferences(preferences);
+
+    expect(JSON.parse(serialized)).toMatchObject({ format: "aster.appearance", version: 1 });
+    expect(parseAppearancePreferences(serialized)).toEqual(preferences);
+  });
+
+  it("rejects invalid and unsupported appearance settings documents", () => {
+    expect(() => parseAppearancePreferences("not-json")).toThrow("valid JSON");
+    expect(() => parseAppearancePreferences("[]")).toThrow("object");
+    expect(() => parseAppearancePreferences('{"format":"aster.appearance","version":2,"preferences":{}}')).toThrow("Unsupported");
+    expect(() => parseAppearancePreferences('{"format":"other","version":1,"preferences":{}}')).toThrow("Unsupported");
+    expect(() => parseAppearancePreferences('{"format":"aster.appearance","version":1,"preferences":[]}')).toThrow("Unsupported");
   });
 });
