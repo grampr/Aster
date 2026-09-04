@@ -1,8 +1,15 @@
 import type {
   ApiErrorBody,
+  Attachment,
+  AttachmentDownloadIntent,
+  AttachmentUploadIntent,
   ChannelList,
+  CreateAttachmentUploadIntentRequest,
   CreateMessageRequest,
+  DirectChannelList,
   GuildList,
+  GuildMemberList,
+  JoinVoiceChannelRequest,
   LoginPasswordRequest,
   GoogleAuthorizationRequest,
   GoogleAuthorizationResponse,
@@ -11,14 +18,26 @@ import type {
   Message,
   MessageReaction,
   MessageList,
+  MessageSearchResult,
+  Presence,
+  ReadState,
+  ReadStateList,
   RefreshSessionRequest,
   SessionTokenResponse,
+  ThreadList,
+  UpdatePresenceRequest,
+  UpdateReadStateRequest,
   UpdateMessageRequest,
   UserSelf,
+  VoiceSession,
+  VoiceState,
+  VoiceStateList,
+  UpdateVoiceStateRequest,
+  RoleList,
 } from "./types";
 import { createFetchTransport, type FetchTransport } from "./transport";
 
-const DEFAULT_API_ORIGIN = "http://localhost:8080";
+const DEFAULT_API_ORIGIN = "http://127.0.0.1:8080";
 
 export class AsterApiError extends Error {
   constructor(
@@ -48,13 +67,15 @@ export function configuredApiOrigin(): string {
 }
 
 export class AsterApiClient {
+  private readonly apiOrigin: string;
   private readonly apiBaseUrl: string;
 
   constructor(
     origin = configuredApiOrigin(),
     private readonly transport: FetchTransport = createFetchTransport(),
   ) {
-    this.apiBaseUrl = `${normalizeApiOrigin(origin)}/api/v1`;
+    this.apiOrigin = normalizeApiOrigin(origin);
+    this.apiBaseUrl = `${this.apiOrigin}/api/v1`;
   }
 
   loginWithPassword(request: LoginPasswordRequest): Promise<SessionTokenResponse> {
@@ -100,6 +121,50 @@ export class AsterApiClient {
     }, accessToken);
   }
 
+  listGuildMembers(guildId: string, accessToken: string, cursor?: string, limit?: number): Promise<GuildMemberList> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/members${queryString({ cursor, limit })}`, {
+      method: "GET",
+    }, accessToken);
+  }
+
+  listGuildRoles(guildId: string, accessToken: string, cursor?: string, limit?: number): Promise<RoleList> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/roles${queryString({ cursor, limit })}`, {
+      method: "GET",
+    }, accessToken);
+  }
+
+  listDirectChannels(accessToken: string, cursor?: string, limit?: number): Promise<DirectChannelList> {
+    return this.request(`/users/@me/channels${queryString({ cursor, limit })}`, { method: "GET" }, accessToken);
+  }
+
+  listChannelThreads(channelId: string, accessToken: string, cursor?: string, limit?: number): Promise<ThreadList> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/threads${queryString({ cursor, limit })}`, {
+      method: "GET",
+    }, accessToken);
+  }
+
+  searchGuildMessages(guildId: string, query: string, accessToken: string, cursor?: string, limit?: number): Promise<{ items: MessageSearchResult[]; page: { has_more: boolean; next_cursor: string | null } }> {
+    const values = new URLSearchParams({ query });
+    if (cursor !== undefined) values.set("cursor", cursor);
+    if (limit !== undefined) values.set("limit", String(limit));
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/messages/search?${values}`, { method: "GET" }, accessToken);
+  }
+
+  listReadStates(accessToken: string): Promise<ReadStateList> {
+    return this.request("/users/@me/read-states", { method: "GET" }, accessToken);
+  }
+
+  updateReadState(channelId: string, body: UpdateReadStateRequest, accessToken: string): Promise<ReadState> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/read-state`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }, accessToken);
+  }
+
+  updatePresence(body: UpdatePresenceRequest, accessToken: string): Promise<Presence> {
+    return this.request("/users/@me/presence", { method: "PUT", body: JSON.stringify(body) }, accessToken);
+  }
+
   listChannelMessages(channelId: string, accessToken: string, cursor?: string, limit?: number): Promise<MessageList> {
     return this.request(`/channels/${encodeURIComponent(channelId)}/messages${queryString({ cursor, limit })}`, {
       method: "GET",
@@ -111,6 +176,68 @@ export class AsterApiClient {
       method: "POST",
       body: JSON.stringify(body),
     }, accessToken);
+  }
+
+  createAttachmentUploadIntent(channelId: string, body: CreateAttachmentUploadIntentRequest, accessToken: string): Promise<AttachmentUploadIntent> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/attachments/intents`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, accessToken);
+  }
+
+  async uploadAttachment(intent: AttachmentUploadIntent, file: Blob): Promise<void> {
+    const headers = new Headers(intent.upload_headers);
+    let response: Response;
+    try {
+      response = await this.transport(intent.upload_url, { method: intent.upload_method, headers, body: file });
+    } catch {
+      throw new AsterNetworkError("ファイルのアップロード先へ接続できませんでした。");
+    }
+    if (!response.ok) {
+      throw new AsterApiError(`ファイルをアップロードできませんでした (${response.status})`, response.status, "ATTACHMENT_UPLOAD_FAILED");
+    }
+  }
+
+  finalizeAttachment(attachmentId: string, accessToken: string): Promise<Attachment> {
+    return this.request(`/attachments/${encodeURIComponent(attachmentId)}/finalize`, { method: "POST" }, accessToken);
+  }
+
+  async deleteAttachment(attachmentId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/attachments/${encodeURIComponent(attachmentId)}`, { method: "DELETE" }, accessToken);
+  }
+
+  async fetchAttachmentContent(downloadUrl: string, accessToken: string): Promise<Blob> {
+    const attachmentId = attachmentIdFromDownloadUrl(downloadUrl);
+    const intent = await this.request<AttachmentDownloadIntent>(`/attachments/${encodeURIComponent(attachmentId)}/download-intents`, { method: "POST" }, accessToken);
+    let response: Response;
+    try {
+      response = await this.transport(intent.download_url, { method: "GET", headers: { Accept: "*/*" } });
+    } catch {
+      throw new AsterNetworkError("添付ファイルを取得できませんでした。");
+    }
+    if (!response.ok) {
+      throw new AsterApiError(`添付ファイルを取得できませんでした (${response.status})`, response.status, "ATTACHMENT_DOWNLOAD_FAILED");
+    }
+    return response.blob();
+  }
+
+  listVoiceStates(channelId: string, accessToken: string): Promise<VoiceStateList> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/voice`, { method: "GET" }, accessToken);
+  }
+
+  joinVoiceChannel(channelId: string, body: JoinVoiceChannelRequest, accessToken: string): Promise<VoiceSession> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/voice`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, accessToken);
+  }
+
+  updateVoiceState(body: UpdateVoiceStateRequest, accessToken: string): Promise<VoiceState> {
+    return this.request("/voice/sessions/@me", { method: "PATCH", body: JSON.stringify(body) }, accessToken);
+  }
+
+  async leaveVoiceChannel(accessToken: string): Promise<void> {
+    await this.request<void>("/voice/sessions/@me", { method: "DELETE" }, accessToken);
   }
 
   updateChannelMessage(channelId: string, messageId: string, body: UpdateMessageRequest, accessToken: string): Promise<Message> {
@@ -183,6 +310,12 @@ export class AsterApiClient {
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
+}
+
+function attachmentIdFromDownloadUrl(downloadUrl: string): string {
+  const match = downloadUrl.match(/\/attachments\/([^/]+)\/content(?:\?|$)/);
+  if (!match?.[1]) throw new AsterApiError("添付ファイルのURLが不正です。", 400, "INVALID_ATTACHMENT_URL");
+  return decodeURIComponent(match[1]);
 }
 
 function queryString(values: { cursor?: string; limit?: number }): string {
