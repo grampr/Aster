@@ -14,6 +14,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Use a light, old-Twitter-inspired visual language: white and near-white surfaces, thin borders, high information density, restrained radius, and minimal shadow.
 - Keep the chat as the dominant region and avoid card-heavy, gradient, glass, or decorative layouts.
 - Use design tokens and working controls for accent color, message density, column widths, and member-list visibility.
+- Expose separate, persisted controls for text size and icon size; preserve typography hierarchy and keep icon hit targets stable while scaling their artwork.
+- Keep font selection persisted and provider-free; use Japanese-capable system font stacks instead of downloading web fonts.
 - Use Phosphor icons and real raster assets; do not substitute emoji, text glyphs, CSS art, or handcrafted SVGs for interface assets.
 - Collapse the member list first and then the channel list while preserving chat composition and guild navigation.
 

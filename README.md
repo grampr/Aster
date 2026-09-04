@@ -94,7 +94,7 @@ npm run test:sites
 npm run tauri:check
 ```
 
-現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信、返信、Reaction、編集、削除、外観設定、表示密度、アクセントカラー、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
+現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信、返信、Reaction、編集、削除、外観設定、表示密度、アクセントカラー、文字サイズ、アイコンサイズ、フォント選択、設定のImportとExport、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
 
 Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿と返信、Unicode絵文字によるReaction、自分のMessageのインライン編集と確認付き削除、Cursorによる過去Messageの追加取得、Gatewayによるリアルタイム反映に対応しています。返信元が編集された場合は参照内容を更新し、削除または閲覧不能になった場合は本文を表示できない状態として示します。Reaction Eventの件数は現在値として適用するため、Gatewayから再配信されても二重に加算しません。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで同じ操作を含むサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
 
@@ -102,6 +102,9 @@ Password認証でログインすると、Aster Serverから参加Guild、Guild�
 
 REST APIの接続先は`VITE_ASTER_API_URL`で指定します。未指定時は`http://localhost:8080`を使用し、Protocolの`/api/v1`を自動的に付加します。
 Gateway接続先はREST APIのOriginから`/gateway/v1`を自動生成します。別の接続先を使用する場合は`VITE_ASTER_GATEWAY_URL`で`ws://`または`wss://` URLを指定できます。
+
+Message入力中は4秒間隔で入力開始を通知します。
+受信した入力中表示はProtocolの`started_at`から10秒で失効し、同じUserのMessageを受信した場合は直ちに消去します。
 
 ```bash
 VITE_ASTER_API_URL=https://aster.example.com npm run tauri:dev
@@ -123,6 +126,11 @@ Aster は、テーマを完成後の追加機能として扱いません。
 デザイントークンを初期設計に含め、コンポーネントと機能レイアウトがトークンを参照する構造を採用します。
 
 想定する変更対象は、色、背景、フォント、角丸、余白、サイドバー幅、メッセージ密度、プロフィールカード、音声通話画面、コミュニティ単位のテーマ上書きです。
+
+現在の外観設定は端末内へ保存します。
+文字サイズは既存のTypography階層へ同じ差分を適用し、アイコンサイズはクリック領域を保ったままPhosphor Iconの表示だけを拡縮します。フォントは外部配信へ依存せず、OSに入っている日本語フォントから選択します。
+
+外観設定は、版番号を含むJSONファイルとして書き出し、同じ形式から読み込めます。読み込み時は既知の値だけを適用し、対応範囲外の値を安全な既定値または上限と下限へ補正します。
 
 テーマと実行可能なプラグインは別の機能として扱います。
 任意の JavaScript 注入は許可せず、Custom CSS を提供する場合も適用範囲と安全性を定義します。

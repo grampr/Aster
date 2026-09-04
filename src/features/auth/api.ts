@@ -126,6 +126,12 @@ export class AsterApiClient {
     }, accessToken);
   }
 
+  async startChannelTyping(channelId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/channels/${encodeURIComponent(channelId)}/typing`, {
+      method: "POST",
+    }, accessToken);
+  }
+
   addMessageReaction(channelId: string, messageId: string, emoji: string, accessToken: string): Promise<MessageReaction> {
     return this.request(`/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`, {
       method: "PUT",

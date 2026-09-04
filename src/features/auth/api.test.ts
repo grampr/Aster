@@ -133,6 +133,22 @@ describe("AsterApiClient", () => {
     expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer access");
   });
 
+  it("posts a transient typing signal without a request body", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(null, { status: 204 });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+
+    await client.startChannelTyping("channel/id", "access");
+
+    expect(calls[0].url).toBe("https://aster.example/api/v1/channels/channel%2Fid/typing");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(calls[0].init?.body).toBeUndefined();
+    expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer access");
+  });
+
   it("starts Google Authorization Code + PKCE using the Protocol contract", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const transport: FetchTransport = async (input, init) => {

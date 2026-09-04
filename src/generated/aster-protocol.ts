@@ -340,6 +340,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels/{channel_id}/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Text Channelで入力開始を通知する
+         * @description 認証済みUserがText Channelへ入力中であることを、Gatewayを通じて同じGuildの接続へ通知します。
+         *     Clientは入力が続く間だけ定期的に呼び出し、Messageを保存する用途には使用しません。
+         */
+        post: operations["startChannelTyping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/channels/{channel_id}/messages/{message_id}": {
         parameters: {
             query?: never;
@@ -2118,6 +2145,35 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["ResourceNotFound"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    startChannelTyping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description 操作対象の Channel ID です。
+                 * @example 0198b8f1-3e7f-7d56-a14f-a3f40304d2b1
+                 */
+                channel_id: components["parameters"]["ChannelId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 入力開始の通知を受け付けました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["ResourceNotFound"];
             429: components["responses"]["RateLimited"];
             default: components["responses"]["Error"];
