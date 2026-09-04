@@ -64,7 +64,9 @@ export class LocalVoiceMediaSession extends ObservableVoiceSession {
   private videoStream: MediaStream | null = null;
   private screenStream: MediaStream | null = null;
 
-  constructor(private readonly devices: MediaDevices = navigator.mediaDevices) {
+  constructor(
+    private readonly devices: MediaDevices | undefined = typeof navigator === "undefined" ? undefined : navigator.mediaDevices,
+  ) {
     super();
   }
 
@@ -84,7 +86,7 @@ export class LocalVoiceMediaSession extends ObservableVoiceSession {
   }
 
   async setVideo(value: boolean): Promise<void> {
-    if (value && !this.videoStream) this.videoStream = await this.devices.getUserMedia({ video: true });
+    if (value && !this.videoStream) this.videoStream = await this.requireDevices().getUserMedia({ video: true });
     if (!value) {
       stopStream(this.videoStream);
       this.videoStream = null;
@@ -94,8 +96,9 @@ export class LocalVoiceMediaSession extends ObservableVoiceSession {
 
   async setScreenShare(value: boolean): Promise<void> {
     if (value && !this.screenStream) {
-      if (typeof this.devices.getDisplayMedia !== "function") throw new Error("この環境は画面共有に対応していません。");
-      this.screenStream = await this.devices.getDisplayMedia({ video: true, audio: true });
+      const devices = this.requireDevices();
+      if (typeof devices.getDisplayMedia !== "function") throw new Error("この環境は画面共有に対応していません。");
+      this.screenStream = await devices.getDisplayMedia({ video: true, audio: true });
       const [track] = this.screenStream.getVideoTracks();
       if (track) track.onended = () => {
         stopStream(this.screenStream);
@@ -121,7 +124,12 @@ export class LocalVoiceMediaSession extends ObservableVoiceSession {
   }
 
   private async ensureAudio(): Promise<void> {
-    if (!this.audioStream) this.audioStream = await this.devices.getUserMedia({ audio: true });
+    if (!this.audioStream) this.audioStream = await this.requireDevices().getUserMedia({ audio: true });
+  }
+
+  private requireDevices(): MediaDevices {
+    if (!this.devices) throw new Error("この環境はメディアデバイスに対応していません。");
+    return this.devices;
   }
 
   private buildSurfaces(): VoiceMediaSurface[] {
