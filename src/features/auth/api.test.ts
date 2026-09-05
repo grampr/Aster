@@ -149,6 +149,58 @@ describe("AsterApiClient", () => {
     expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer access");
   });
 
+  it("downloads attachment bytes through a short-lived download intent without leaking the access token", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      if (calls.length === 1) {
+        return new Response(JSON.stringify({
+          download_url: "https://objects.example/signed-file",
+          expires_at: "2026-09-04T08:00:00Z",
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("attachment-body", { status: 200, headers: { "Content-Type": "text/plain" } });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+
+    const blob = await client.fetchAttachmentContent("/api/v1/attachments/attachment%2Fid/content", "secret-access-token");
+
+    expect(await blob.text()).toBe("attachment-body");
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://aster.example/api/v1/attachments/attachment%2Fid/download-intents",
+      "https://objects.example/signed-file",
+    ]);
+    expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer secret-access-token");
+    expect(new Headers(calls[1].init?.headers).has("Authorization")).toBe(false);
+  });
+
+  it("uploads a file body with every header signed by object storage", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const transport: FetchTransport = async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response(null, { status: 200 });
+    };
+    const client = new AsterApiClient("https://aster.example", transport);
+    const file = new Blob(["file-body"], { type: "text/plain" });
+
+    await client.uploadAttachment({
+      attachment: {} as never,
+      upload_url: "https://objects.example/signed-upload",
+      upload_method: "PUT",
+      upload_headers: {
+        "Content-Type": "text/plain",
+        "x-amz-checksum-sha256": "checksum",
+      },
+      expires_at: "2026-09-04T08:00:00Z",
+    }, file);
+
+    expect(calls[0].url).toBe("https://objects.example/signed-upload");
+    expect(calls[0].init?.method).toBe("PUT");
+    expect(calls[0].init?.body).toBe(file);
+    expect(new Headers(calls[0].init?.headers).get("x-amz-checksum-sha256")).toBe("checksum");
+    expect(new Headers(calls[0].init?.headers).has("Authorization")).toBe(false);
+  });
+
   it("starts Google Authorization Code + PKCE using the Protocol contract", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const transport: FetchTransport = async (input, init) => {

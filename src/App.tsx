@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, ComponentProps, FormEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import {
-  Archive, ArrowSquareOut, At, CaretDown, CaretUp, Check, DownloadSimple,
+  Archive, ArrowSquareOut, At, Camera, CaretDown, CaretUp, Check, CircleNotch, DownloadSimple,
   FunnelSimple, Gear, Hash, Headphones, ImageSquare, Info, ListPlus,
   MagnifyingGlass, Microphone, MicrophoneSlash, PaperPlaneTilt, Plus,
-  PushPin, SlidersHorizontal, Smiley, SpeakerHigh, TextAa, UserPlus,
+  MonitorArrowUp, PushPin, SlidersHorizontal, Smiley, SpeakerHigh, TextAa, UserPlus,
   Users, Waveform, X, PhoneDisconnect, ArrowBendUpLeft,
   SignOut, PencilSimple, Trash, UploadSimple,
 } from "@phosphor-icons/react";
 import {
   assets, channels as demoChannels, guilds as demoGuilds, initialMessages, members,
-  type Channel as ViewChannel, type ChatMessage, type Member,
+  type Channel as ViewChannel, type ChatMessage, type Member, type ViewAttachment,
 } from "./data";
 import { AuthGate } from "./features/auth/AuthGate";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
@@ -54,6 +54,18 @@ function fontSizeLabel(delta: number): string {
   return `${delta > 0 ? "+" : ""}${delta}px`;
 }
 
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function uploadStageLabel(stage: "hashing" | "uploading" | "finalizing"): string {
+  if (stage === "hashing") return "安全性を確認中…";
+  if (stage === "uploading") return "アップロード中…";
+  return "添付を確定中…";
+}
+
 function GuildRail({ guilds, activeGuild, onSelect }: { guilds: ViewGuild[]; activeGuild: string | null; onSelect: (id: string) => void }) {
   return (
     <nav className="guild-rail" aria-label="コミュニティ">
@@ -78,17 +90,35 @@ function GuildRail({ guilds, activeGuild, onSelect }: { guilds: ViewGuild[]; act
   );
 }
 
-function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect }: {
+type ViewVoiceState = { userId: string; channelId: string; muted: boolean; deafened: boolean; video: boolean; screenShare: boolean };
+
+function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect, members: visibleMembers,
+  voiceStates, activeVoiceChannelId, voiceStatus, voiceMedia, voiceError, onJoinVoice, onLeaveVoice,
+  onMuted, onDeafened, onVideo, onScreenShare, onOpenStage,
+}: {
   channels: ViewChannel[];
   guildName: string;
   selectedChannel: string | null;
   loading: boolean;
   onSelect: (id: string) => void;
+  members: Member[];
+  voiceStates: ViewVoiceState[];
+  activeVoiceChannelId: string | null;
+  voiceStatus: "idle" | "joining" | "connected" | "leaving" | "failed";
+  voiceMedia: { muted: boolean; deafened: boolean; video: boolean; screenShare: boolean };
+  voiceError: string | null;
+  onJoinVoice: (id: string) => Promise<void>;
+  onLeaveVoice: () => Promise<void>;
+  onMuted: (value: boolean) => Promise<void>;
+  onDeafened: (value: boolean) => Promise<void>;
+  onVideo: (value: boolean) => Promise<void>;
+  onScreenShare: (value: boolean) => Promise<void>;
+  onOpenStage: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [voiceExpanded, setVoiceExpanded] = useState(true);
   const filtered = channels.filter((channel) => channel.label.toLowerCase().includes(query.toLowerCase()));
-  const textChannels = filtered.filter((channel) => channel.kind === "text");
+  const textChannels = filtered.filter((channel) => channel.kind === "text" || channel.kind === "thread" || channel.kind === "direct");
   const voiceChannels = filtered.filter((channel) => channel.kind === "voice");
 
   return (
@@ -136,21 +166,26 @@ function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect 
             <IconButton label="ボイスチャンネルを追加"><Plus size={17} /></IconButton>
           </div>
           {voiceChannels.map((channel) => (
-            <div key={channel.id} className={`voice-channel ${channel.id === "event-voice" ? "is-active" : ""}`}>
-              <button type="button" className="voice-channel__row" onClick={() => setVoiceExpanded((value) => !value)}>
+            <div key={channel.id} className={`voice-channel ${channel.id === activeVoiceChannelId ? "is-active" : ""}`}>
+              <button type="button" className="voice-channel__row" onClick={() => {
+                setVoiceExpanded(true);
+                void onJoinVoice(channel.id).catch(() => undefined);
+              }} disabled={voiceStatus === "joining" || voiceStatus === "leaving"}>
                 <SpeakerHigh size={18} />
                 <span>{channel.label}</span>
-                {channel.activeUsers ? <Waveform className="voice-wave" size={18} weight="bold" /> : <span className="voice-capacity">0/10</span>}
+                {voiceStates.some((state) => state.channelId === channel.id) ? <Waveform className="voice-wave" size={18} weight="bold" /> : <span className="voice-capacity">0/10</span>}
               </button>
-              {channel.id === "event-voice" && voiceExpanded && (
+              {voiceStates.some((state) => state.channelId === channel.id) && voiceExpanded && (
                 <div className="voice-users">
-                  {members.slice(0, 3).map((member, index) => (
-                    <div className="voice-user" key={member.name}>
-                      <Avatar src={member.avatar} size="small" />
-                      <span>{index === 0 ? "Aster（あなた）" : member.name}</span>
-                      {index === 0 ? <Headphones size={15} /> : <Microphone size={15} />}
+                  {voiceStates.filter((state) => state.channelId === channel.id).map((state) => {
+                    const member = visibleMembers.find((candidate) => candidate.id === state.userId);
+                    return (
+                    <div className="voice-user" key={state.userId}>
+                      <Avatar src={member?.avatar ?? assets.mountain} size="small" />
+                      <span>{member?.name ?? "参加者"}</span>
+                      {state.deafened ? <Headphones size={15} /> : state.muted ? <MicrophoneSlash size={15} /> : state.screenShare ? <MonitorArrowUp size={15} /> : <Microphone size={15} />}
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             </div>
@@ -162,42 +197,92 @@ function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect 
           <span>アーカイブ</span>
         </button>
       </div>
-      <VoiceDock />
+      <VoiceDock
+        channelName={channels.find((channel) => channel.id === activeVoiceChannelId)?.label ?? null}
+        participantCount={voiceStates.filter((state) => state.channelId === activeVoiceChannelId).length}
+        status={voiceStatus}
+        media={voiceMedia}
+        error={voiceError}
+        onLeave={onLeaveVoice}
+        onMuted={onMuted}
+        onDeafened={onDeafened}
+        onVideo={onVideo}
+        onScreenShare={onScreenShare}
+        onOpenStage={onOpenStage}
+      />
     </aside>
   );
 }
 
-function VoiceDock() {
-  const [muted, setMuted] = useState(false);
-  const [deafened, setDeafened] = useState(false);
-  const [connected, setConnected] = useState(true);
-
-  if (!connected) {
+function VoiceDock({ channelName, participantCount, status, media, error, onLeave, onMuted, onDeafened, onVideo, onScreenShare, onOpenStage }: {
+  channelName: string | null;
+  participantCount: number;
+  status: "idle" | "joining" | "connected" | "leaving" | "failed";
+  media: { muted: boolean; deafened: boolean; video: boolean; screenShare: boolean };
+  error: string | null;
+  onLeave: () => Promise<void>;
+  onMuted: (value: boolean) => Promise<void>;
+  onDeafened: (value: boolean) => Promise<void>;
+  onVideo: (value: boolean) => Promise<void>;
+  onScreenShare: (value: boolean) => Promise<void>;
+  onOpenStage: () => void;
+}) {
+  if (!channelName || status === "idle" || status === "failed") {
     return (
       <div className="voice-dock voice-dock--offline">
-        <div><strong>通話から退出しました</strong><span>イベント企画ミーティング</span></div>
-        <button type="button" onClick={() => setConnected(true)}>再接続</button>
+        <div><strong>{error ? "通話に接続できません" : "ボイス未接続"}</strong><span>{error ?? "チャンネルを選択して参加"}</span></div>
       </div>
     );
   }
 
   return (
     <div className="voice-dock">
-      <button className="voice-dock__summary" type="button">
-        <span><strong>イベント企画ミーティング</strong><small>3人が参加中　<span>接続済み</span></small></span>
+      <button className="voice-dock__summary" type="button" onClick={onOpenStage}>
+        <span><strong>{channelName}</strong><small>{participantCount}人が参加中　<span>{status === "connected" ? "接続済み" : "接続中…"}</span></small></span>
         <CaretUp size={15} />
       </button>
       <div className="voice-actions">
-        <IconButton label={muted ? "ミュートを解除" : "ミュート"} active={muted} onClick={() => setMuted((value) => !value)}>
-          {muted ? <MicrophoneSlash size={21} /> : <Microphone size={21} />}
+        <IconButton label={media.muted ? "ミュートを解除" : "ミュート"} active={media.muted} onClick={() => void onMuted(!media.muted).catch(() => undefined)}>
+          {media.muted ? <MicrophoneSlash size={21} /> : <Microphone size={21} />}
         </IconButton>
-        <IconButton label={deafened ? "スピーカーを有効化" : "スピーカーをミュート"} active={deafened} onClick={() => setDeafened((value) => !value)}>
+        <IconButton label={media.deafened ? "スピーカーを有効化" : "スピーカーをミュート"} active={media.deafened} onClick={() => void onDeafened(!media.deafened).catch(() => undefined)}>
           <Headphones size={21} />
         </IconButton>
-        <IconButton label="通話設定"><Gear size={21} /></IconButton>
-        <IconButton label="通話から退出" className="hangup" onClick={() => setConnected(false)}><PhoneDisconnect size={21} /></IconButton>
+        <IconButton label={media.video ? "カメラを停止" : "カメラを開始"} active={media.video} onClick={() => void onVideo(!media.video).catch(() => undefined)}><Camera size={21} /></IconButton>
+        <IconButton label={media.screenShare ? "画面共有を停止" : "画面を共有"} active={media.screenShare} onClick={() => void onScreenShare(!media.screenShare).catch(() => undefined)}><MonitorArrowUp size={21} /></IconButton>
+        <IconButton label="通話から退出" className="hangup" onClick={() => void onLeave().catch(() => undefined)}><PhoneDisconnect size={21} /></IconButton>
       </div>
     </div>
+  );
+}
+
+function VoiceStage({ channelName, surfaces, onClose }: {
+  channelName: string;
+  surfaces: Array<{ id: string; name: string; kind: "camera" | "screen"; stream: MediaStream; local: boolean }>;
+  onClose: () => void;
+}) {
+  return (
+    <section className="voice-stage" aria-label={`${channelName}の通話画面`}>
+      <header><div><Waveform size={20} weight="bold" /><span><strong>{channelName}</strong><small>ボイスセッション</small></span></div><IconButton label="通話画面を閉じる" onClick={onClose}><X size={20} /></IconButton></header>
+      <div className={`voice-stage__grid ${surfaces.some((surface) => surface.kind === "screen") ? "has-screen" : ""}`}>
+        {surfaces.length === 0 && <div className="voice-stage__empty"><SpeakerHigh size={30} /><strong>音声で接続しています</strong><span>カメラまたは画面共有を開始すると、ここに表示されます。</span></div>}
+        {surfaces.map((surface) => <VoiceVideoSurface surface={surface} key={surface.id} />)}
+      </div>
+    </section>
+  );
+}
+
+function VoiceVideoSurface({ surface }: { surface: { name: string; kind: "camera" | "screen"; stream: MediaStream; local: boolean } }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = surface.stream;
+    return () => { if (videoRef.current) videoRef.current.srcObject = null; };
+  }, [surface.stream]);
+  return (
+    <figure className={`voice-surface is-${surface.kind}`}>
+      <video ref={videoRef} autoPlay playsInline muted={surface.local} />
+      <figcaption>{surface.kind === "screen" ? <MonitorArrowUp size={16} /> : <Camera size={16} />}<span>{surface.name}</span></figcaption>
+    </figure>
   );
 }
 
@@ -315,7 +400,7 @@ function ChatPanel({
   loading = false, sending = false, error = null, enabled = true,
   hasOlderMessages = false, loadingOlderMessages = false, onLoadOlder, onRetry, gatewayStatus,
   onUpdate, onDelete, onToggleReaction, updatingMessageId = null, deletingMessageId = null, reactingKey = null,
-  typingNames = [], onTyping,
+  typingNames = [], onTyping, uploads = [], onFetchAttachment,
 }: {
   channelKey: string | null;
   channelLabel: string;
@@ -324,7 +409,7 @@ function ChatPanel({
   onSettings: () => void;
   appearance: ComponentProps<typeof AppearancePopover>;
   messages: ChatMessage[];
-  onSend: (message: string, replyToMessageId?: ChatMessage["id"]) => Promise<void>;
+  onSend: (message: string, replyToMessageId?: ChatMessage["id"], files?: File[]) => Promise<void>;
   loading?: boolean;
   sending?: boolean;
   error?: string | null;
@@ -342,16 +427,24 @@ function ChatPanel({
   reactingKey?: string | null;
   typingNames?: string[];
   onTyping?: () => void;
+  uploads?: Array<{ id: string; name: string; stage: "hashing" | "uploading" | "finalizing" }>;
+  onFetchAttachment?: (attachment: ViewAttachment) => Promise<Blob>;
 }) {
   const [draft, setDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  useEffect(() => setReplyingTo(null), [channelKey]);
+  const [files, setFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    setReplyingTo(null);
+    setFiles([]);
+  }, [channelKey]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!draft.trim()) return;
+    if (!draft.trim() && files.length === 0) return;
     try {
-      await onSend(draft.trim(), replyingTo?.id);
+      await onSend(draft.trim(), replyingTo?.id, files);
       setDraft("");
+      setFiles([]);
       setReplyingTo(null);
     } catch {
       // Workspace error state keeps the draft available for retry.
@@ -397,6 +490,7 @@ function ChatPanel({
             updating={String(message.id) === updatingMessageId}
             deleting={String(message.id) === deletingMessageId}
             reactingKey={reactingKey}
+            onFetchAttachment={onFetchAttachment}
           />
         ))}
       </div>
@@ -411,26 +505,51 @@ function ChatPanel({
             <IconButton label="返信をキャンセル" onClick={() => setReplyingTo(null)}><X size={17} /></IconButton>
           </div>
         )}
+        {(files.length > 0 || uploads.length > 0) && (
+          <div className="composer-files" aria-label="添付ファイル">
+            {files.map((file, index) => {
+              const progress = uploads.find((upload) => upload.name === file.name);
+              return (
+                <div className="composer-file" key={`${file.name}:${file.lastModified}:${index}`}>
+                  <ImageSquare size={20} />
+                  <span><strong>{file.name}</strong><small>{progress ? uploadStageLabel(progress.stage) : formatBytes(file.size)}</small></span>
+                  {progress ? <CircleNotch className="is-spinning" size={18} /> : <IconButton label={`${file.name}を削除`} onClick={() => setFiles((current) => current.filter((_, candidate) => candidate !== index))}><X size={16} /></IconButton>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         <textarea disabled={!enabled || sending} value={draft} onChange={(event) => {
           setDraft(event.target.value);
           if (event.target.value.trim()) onTyping?.();
         }} placeholder={enabled ? `#${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
         <div className="composer-actions">
           <div>
-            <IconButton label="ファイルを追加"><Plus size={20} /></IconButton>
+            <input
+              ref={fileInputRef}
+              className="visually-hidden"
+              type="file"
+              multiple
+              onChange={(event) => {
+                const selected = [...(event.target.files ?? [])];
+                setFiles((current) => [...current, ...selected].slice(0, 10));
+                event.currentTarget.value = "";
+              }}
+            />
+            <IconButton label="ファイルを追加" onClick={() => fileInputRef.current?.click()}><Plus size={20} /></IconButton>
             <IconButton label="書式"><TextAa size={20} /></IconButton>
             <IconButton label="絵文字"><Smiley size={20} /></IconButton>
             <IconButton label="メンション"><At size={20} /></IconButton>
             <IconButton label="画像"><ImageSquare size={20} /></IconButton>
           </div>
-          <button type="submit" className="send-button" disabled={!enabled || sending || !draft.trim()} aria-label="送信"><PaperPlaneTilt size={24} weight="fill" /></button>
+          <button type="submit" className="send-button" disabled={!enabled || sending || (!draft.trim() && files.length === 0)} aria-label="送信"><PaperPlaneTilt size={24} weight="fill" /></button>
         </div>
       </form>
     </main>
   );
 }
 
-function MessageGroup({ message, onReply, onUpdate, onDelete, onToggleReaction, updating, deleting, reactingKey }: {
+function MessageGroup({ message, onReply, onUpdate, onDelete, onToggleReaction, updating, deleting, reactingKey, onFetchAttachment }: {
   message: ChatMessage;
   onReply: (message: ChatMessage) => void;
   onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
@@ -439,6 +558,7 @@ function MessageGroup({ message, onReply, onUpdate, onDelete, onToggleReaction, 
   updating: boolean;
   deleting: boolean;
   reactingKey: string | null;
+  onFetchAttachment?: (attachment: ViewAttachment) => Promise<Blob>;
 }) {
   const originalContent = message.lines.join("\n");
   const [editing, setEditing] = useState(false);
@@ -536,14 +656,9 @@ function MessageGroup({ message, onReply, onUpdate, onDelete, onToggleReaction, 
             {message.afterReply && <p className="after-reply">{message.afterReply}</p>}
           </>
         )}
-        {message.attachment && (
-          <div className="attachment-card">
-            <img src={assets.flyer} alt="星屑コミュニティ秋の交流会のチラシ" />
-            <div><strong>イベント チラシ案_v1.jpg</strong><span>1.2 MB ・ 画像</span></div>
-            <IconButton label="ダウンロード"><DownloadSimple size={20} /></IconButton>
-            <IconButton label="新しいウィンドウで開く"><ArrowSquareOut size={20} /></IconButton>
-          </div>
-        )}
+        {message.attachments?.map((attachment) => (
+          <AttachmentCard attachment={attachment} onFetch={onFetchAttachment} key={attachment.id} />
+        ))}
         {!!message.reactions?.length && (
           <div className="message-reactions" aria-label="リアクション">
             {message.reactions.map((reaction) => (
@@ -589,15 +704,88 @@ function MessageGroup({ message, onReply, onUpdate, onDelete, onToggleReaction, 
   );
 }
 
-function MemberPanel({ onClose, onLogout }: { onClose: () => void; onLogout: () => void }) {
+function AttachmentCard({ attachment, onFetch }: { attachment: ViewAttachment; onFetch?: (attachment: ViewAttachment) => Promise<Blob> }) {
+  const [previewUrl, setPreviewUrl] = useState(attachment.previewUrl ?? "");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const isImage = attachment.contentType.startsWith("image/");
+
+  useEffect(() => {
+    setFailed(false);
+    if (attachment.previewUrl) {
+      setPreviewUrl(attachment.previewUrl);
+      return;
+    }
+    setPreviewUrl("");
+    if (!isImage || !onFetch) return;
+    let disposed = false;
+    let objectUrl = "";
+    void onFetch(attachment).then((blob) => {
+      if (disposed) return;
+      objectUrl = URL.createObjectURL(blob);
+      setPreviewUrl(objectUrl);
+    }).catch(() => { if (!disposed) setFailed(true); });
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment.id, attachment.previewUrl, isImage, onFetch]);
+
+  const acquire = async (): Promise<{ blob: Blob; url: string } | null> => {
+    if (!onFetch) return null;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const blob = await onFetch(attachment);
+      return { blob, url: URL.createObjectURL(blob) };
+    } catch {
+      setFailed(true);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const download = async () => {
+    const acquired = await acquire();
+    if (!acquired) return;
+    const anchor = document.createElement("a");
+    anchor.href = acquired.url;
+    anchor.download = attachment.filename;
+    anchor.click();
+    globalThis.setTimeout(() => URL.revokeObjectURL(acquired.url), 1_000);
+  };
+
+  const open = async () => {
+    if (previewUrl) {
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const acquired = await acquire();
+    if (!acquired) return;
+    window.open(acquired.url, "_blank", "noopener,noreferrer");
+    globalThis.setTimeout(() => URL.revokeObjectURL(acquired.url), 60_000);
+  };
+
+  return (
+    <div className={`attachment-card ${failed ? "is-error" : ""}`}>
+      {previewUrl ? <img src={previewUrl} alt={attachment.filename} /> : <span className="attachment-placeholder"><ImageSquare size={24} /></span>}
+      <div><strong>{attachment.filename}</strong><span>{formatBytes(attachment.size)} ・ {isImage ? "画像" : attachment.contentType}{failed ? " ・ 読み込み失敗" : ""}</span></div>
+      <IconButton label="ダウンロード" onClick={() => void download()}>{busy ? <CircleNotch className="is-spinning" size={20} /> : <DownloadSimple size={20} />}</IconButton>
+      <IconButton label="新しいウィンドウで開く" onClick={() => void open()}><ArrowSquareOut size={20} /></IconButton>
+    </div>
+  );
+}
+
+function MemberPanel({ members: visibleMembers, loading, onClose, onLogout }: { members: Member[]; loading: boolean; onClose: () => void; onLogout: () => void }) {
   const [query, setQuery] = useState("");
-  const filteredMembers = members.filter((member) => member.name.toLowerCase().includes(query.toLowerCase()));
-  const groups = ["運営", "モデレーター", "メンバー"] as const;
+  const filteredMembers = visibleMembers.filter((member) => member.name.toLowerCase().includes(query.toLowerCase()));
+  const groups = [...new Set(filteredMembers.map((member) => member.role))];
 
   return (
     <aside className="member-panel">
       <header className="panel-title member-title">
-        <strong>メンバー <span>— 28</span></strong>
+        <strong>メンバー <span>— {visibleMembers.length}</span></strong>
         <div className="member-title__actions">
           <IconButton label="ログアウト" onClick={onLogout}><SignOut size={20} /></IconButton>
           <IconButton label="メンバーリストを閉じる" onClick={onClose}><X size={21} /></IconButton>
@@ -608,12 +796,13 @@ function MemberPanel({ onClose, onLogout }: { onClose: () => void; onLogout: () 
         <IconButton label="メンバーを絞り込む"><FunnelSimple size={20} /></IconButton>
       </div>
       <div className="member-scroll">
+        {loading && <p className="panel-inline-state">メンバーを読み込み中…</p>}
         {groups.map((role) => {
           const roleMembers = filteredMembers.filter((member) => member.role === role);
           if (!roleMembers.length) return null;
           return (
             <section className="member-group" key={role}>
-              <h2>{role} — {role === "メンバー" ? 20 : roleMembers.length}</h2>
+              <h2>{role} — {roleMembers.length}</h2>
               {roleMembers.map((member) => (
                 <button type="button" className="member-row" key={member.name}>
                   <Avatar src={member.avatar} size="medium" status={member.status} />
@@ -623,7 +812,7 @@ function MemberPanel({ onClose, onLogout }: { onClose: () => void; onLogout: () 
             </section>
           );
         })}
-        <button type="button" className="show-more">他15人を表示 <CaretDown size={15} /></button>
+        {!loading && filteredMembers.length === 0 && <p className="panel-inline-state">該当するメンバーはいません</p>}
       </div>
     </aside>
   );
@@ -647,6 +836,20 @@ function DesktopWorkspace() {
   const [fontFamily, setFontFamily] = useState<FontFamily>(initialAppearance.fontFamily);
   const [exportAppearanceHref, setExportAppearanceHref] = useState("");
   const [demoMessages, setDemoMessages] = useState(initialMessages);
+  const [voiceStageOpen, setVoiceStageOpen] = useState(false);
+  const [demoVoiceMedia, setDemoVoiceMedia] = useState({ muted: false, deafened: false, video: false, screenShare: false });
+  const fetchViewAttachment = useCallback(async (attachment: ViewAttachment): Promise<Blob> => {
+    if (attachment.download) return attachment.download();
+    if (attachment.previewUrl) {
+      const response = await fetch(attachment.previewUrl);
+      if (response.ok) return response.blob();
+    }
+    throw new Error("ダウンロードできません");
+  }, []);
+
+  useEffect(() => {
+    if (!isDemo && workspace.activeVoiceChannelId === null) setVoiceStageOpen(false);
+  }, [isDemo, workspace.activeVoiceChannelId]);
 
   useEffect(() => {
     saveAppearancePreferences({
@@ -667,8 +870,32 @@ function DesktopWorkspace() {
     id: guild.id, name: guild.name, image: guild.icon_url ?? assets.logo,
   }));
   const visibleChannels: ViewChannel[] = isDemo ? demoChannels : workspace.channels.map((channel) => ({
-    id: channel.id, label: channel.name, kind: channel.type === "TEXT" ? "text" : "voice",
+    id: channel.id,
+    label: channel.name ?? (channel.type === "DIRECT" ? channel.recipients.map((recipient) => recipient.display_name).join(", ") : "名称未設定"),
+    kind: channel.type.toLowerCase() as ViewChannel["kind"],
+    parentId: channel.parent_id,
+    unread: workspace.unreadChannelIds.has(channel.id) ? 1 : undefined,
+    activeUsers: workspace.voiceStates.filter((state) => state.channel_id === channel.id).length,
   }));
+  const visibleMembers: Member[] = isDemo ? members : workspace.members.map((member) => {
+    const assignedRoles = workspace.roles.filter((role) => member.role_ids.includes(role.id)).sort((left, right) => right.position - left.position);
+    const roleName = assignedRoles.find((role) => !role.managed)?.name ?? "メンバー";
+    const status = member.presence.status === "ONLINE" ? "online" : member.presence.status === "OFFLINE" ? "offline" : "away";
+    return {
+      id: member.user.id,
+      name: member.nickname ?? member.user.display_name,
+      avatar: member.user.avatar_url ?? assets.mountain,
+      status,
+      role: roleName,
+      detail: member.presence.custom_text ?? (status === "online" ? "オンライン" : status === "away" ? "取り込み中" : "オフライン"),
+    };
+  });
+  const visibleVoiceStates: ViewVoiceState[] = isDemo
+    ? members.slice(0, 3).map((member, index) => ({ userId: member.name, channelId: "event-voice", muted: false, deafened: index === 0, video: false, screenShare: false }))
+    : workspace.voiceStates.filter((state): state is typeof state & { channel_id: string } => state.channel_id !== null).map((state) => ({
+      userId: state.user_id, channelId: state.channel_id, muted: state.self_mute, deafened: state.self_deaf,
+      video: state.self_video, screenShare: state.self_stream,
+    }));
   const activeGuild = isDemo ? demoActiveGuild : workspace.activeGuildId;
   const selectedChannel = isDemo ? demoSelectedChannel : workspace.selectedChannelId;
   const visibleMessages: ChatMessage[] = isDemo ? demoMessages.map((message) => ({
@@ -691,6 +918,13 @@ function DesktopWorkspace() {
       body: message.reply_to.content,
     } : undefined,
     replyUnavailable: message.reply_to_message_id !== null && message.reply_to === null,
+    attachments: message.attachments.map((attachment) => ({
+      id: attachment.id,
+      filename: attachment.filename,
+      contentType: attachment.content_type,
+      size: attachment.size,
+      download: () => workspace.fetchAttachment(attachment),
+    })),
   }));
   const guildName = visibleGuilds.find((guild) => guild.id === activeGuild)?.name ?? (workspace.loadingGuilds ? "読み込み中…" : "コミュニティがありません");
   const channelLabel = visibleChannels.find((channel) => channel.id === selectedChannel)?.label ?? "チャンネル未選択";
@@ -740,13 +974,14 @@ function DesktopWorkspace() {
     applyAppearance(parseAppearancePreferences(serialized));
   };
 
-  const sendMessage = async (body: string, replyToMessageId?: ChatMessage["id"]) => {
-    if (!isDemo) return workspace.sendMessage(body, replyToMessageId === undefined ? undefined : String(replyToMessageId));
+  const sendMessage = async (body: string, replyToMessageId?: ChatMessage["id"], files: File[] = []) => {
+    if (!isDemo) return workspace.sendMessage(body, replyToMessageId === undefined ? undefined : String(replyToMessageId), files);
     setDemoMessages((current) => {
       const source = current.find((message) => message.id === replyToMessageId);
       return [...current, {
         id: Date.now(), author: user?.display_name ?? "Aster", avatar: user?.avatar_url ?? assets.mountain,
         time: new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()), lines: [body], editable: true,
+        attachments: files.map((file, index) => ({ id: `${Date.now()}:${index}`, filename: file.name, contentType: file.type || "application/octet-stream", size: file.size, previewUrl: URL.createObjectURL(file) })),
         replyTo: source ? { id: source.id, author: source.author, avatar: source.avatar, body: source.lines.join("\n") } : undefined,
       }];
     });
@@ -790,7 +1025,34 @@ function DesktopWorkspace() {
   return (
     <div className={`app-shell ${membersVisible ? "" : "without-members"}`} style={shellStyle}>
       <GuildRail guilds={visibleGuilds} activeGuild={activeGuild} onSelect={isDemo ? setDemoActiveGuild : workspace.selectGuild} />
-      <ChannelPanel channels={visibleChannels} guildName={guildName} selectedChannel={selectedChannel} loading={!isDemo && workspace.loadingChannels} onSelect={isDemo ? setDemoSelectedChannel : workspace.selectChannel} />
+      <ChannelPanel
+        channels={visibleChannels}
+        guildName={guildName}
+        selectedChannel={selectedChannel}
+        loading={!isDemo && workspace.loadingChannels}
+        onSelect={isDemo ? setDemoSelectedChannel : workspace.selectChannel}
+        members={visibleMembers}
+        voiceStates={visibleVoiceStates}
+        activeVoiceChannelId={isDemo ? "event-voice" : workspace.activeVoiceChannelId}
+        voiceStatus={isDemo ? "connected" : workspace.voiceStatus}
+        voiceMedia={isDemo ? demoVoiceMedia : workspace.voiceMedia}
+        voiceError={isDemo ? null : workspace.voiceError}
+        onJoinVoice={isDemo ? async () => undefined : workspace.joinVoice}
+        onLeaveVoice={isDemo ? async () => undefined : workspace.leaveVoice}
+        onMuted={isDemo ? async (value) => setDemoVoiceMedia((current) => ({ ...current, muted: value })) : workspace.setVoiceMuted}
+        onDeafened={isDemo ? async (value) => setDemoVoiceMedia((current) => ({ ...current, deafened: value })) : workspace.setVoiceDeafened}
+        onVideo={async (value) => {
+          if (isDemo) setDemoVoiceMedia((current) => ({ ...current, video: value }));
+          else await workspace.setVoiceVideo(value);
+          if (value) setVoiceStageOpen(true);
+        }}
+        onScreenShare={async (value) => {
+          if (isDemo) setDemoVoiceMedia((current) => ({ ...current, screenShare: value }));
+          else await workspace.setVoiceScreenShare(value);
+          if (value) setVoiceStageOpen(true);
+        }}
+        onOpenStage={() => setVoiceStageOpen(true)}
+      />
       <ResizeHandle label="チャンネル幅を変更" onPointerDown={beginResize("channel")} />
       <ChatPanel
         channelKey={selectedChannel}
@@ -827,10 +1089,19 @@ function DesktopWorkspace() {
         gatewayStatus={isDemo ? undefined : workspace.gatewayStatus}
         typingNames={isDemo ? ["みさき"] : workspace.typingUsers.map((typingUser) => typingUser.display_name)}
         onTyping={isDemo ? undefined : workspace.notifyTyping}
+        uploads={isDemo ? [] : workspace.uploads}
+        onFetchAttachment={fetchViewAttachment}
       />
       {membersVisible && <ResizeHandle label="メンバーリスト幅を変更" onPointerDown={beginResize("member")} />}
-      {membersVisible && <MemberPanel onClose={() => setMembersVisible(false)} onLogout={() => void logout()} />}
+      {membersVisible && <MemberPanel members={visibleMembers} loading={!isDemo && workspace.loadingMembers} onClose={() => setMembersVisible(false)} onLogout={() => void logout()} />}
       {!membersVisible && <button className="restore-members" type="button" onClick={() => setMembersVisible(true)}><Users size={19} />メンバーを表示</button>}
+      {voiceStageOpen && (
+        <VoiceStage
+          channelName={visibleChannels.find((channel) => channel.id === (isDemo ? "event-voice" : workspace.activeVoiceChannelId))?.label ?? "ボイスチャンネル"}
+          surfaces={isDemo ? [] : workspace.voiceMedia.surfaces}
+          onClose={() => setVoiceStageOpen(false)}
+        />
+      )}
     </div>
   );
 }

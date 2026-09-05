@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AsterGatewayClient, gatewayUrlFromApiOrigin, type MessageGatewayEvent } from "./gateway";
+import { AsterGatewayClient, gatewayUrlFromApiOrigin, type WorkspaceGatewayEvent } from "./gateway";
 
 class FakeSocket {
   readyState = 0;
@@ -51,7 +51,7 @@ describe("AsterGatewayClient", () => {
   it("identifies with message intents, heartbeats, and forwards dispatch events", () => {
     vi.useFakeTimers();
     const sockets: FakeSocket[] = [];
-    const events: MessageGatewayEvent[] = [];
+    const events: WorkspaceGatewayEvent[] = [];
     const statuses: string[] = [];
     const client = new AsterGatewayClient({
       accessToken: "secret-access-token",
@@ -71,7 +71,7 @@ describe("AsterGatewayClient", () => {
 
     expect(JSON.parse(sockets[0].sent[0])).toEqual({
       op: 2,
-      d: { token: "secret-access-token", intents: 661 },
+      d: { token: "secret-access-token", intents: 767 },
     });
 
     sockets[0].receive({
@@ -93,6 +93,7 @@ describe("AsterGatewayClient", () => {
         reply_to: null,
         created_at: "2026-08-23T00:00:00Z",
         edited_at: null,
+        attachments: [],
       },
     });
     sockets[0].receive({
@@ -196,7 +197,7 @@ describe("AsterGatewayClient", () => {
     sockets[1].open();
     sockets[1].receive({ op: 10, d: { heartbeat_interval_ms: 1_000 } });
 
-    expect(JSON.parse(sockets[1].sent[0])).toEqual({ op: 2, d: { token: "access", intents: 661 } });
+    expect(JSON.parse(sockets[1].sent[0])).toEqual({ op: 2, d: { token: "access", intents: 767 } });
     client.stop();
   });
 });

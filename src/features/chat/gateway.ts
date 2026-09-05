@@ -1,16 +1,31 @@
 import type {
   AsterGatewayMessage,
+  ChannelCreateEvent,
+  ChannelDeleteEvent,
+  ChannelUpdateEvent,
+  MemberJoinEvent,
+  MemberLeaveEvent,
+  MemberUpdateEvent,
   MessageCreateEvent,
   MessageDeleteEvent,
   MessageReactionAddEvent,
   MessageReactionRemoveEvent,
   MessageUpdateEvent,
+  PresenceUpdateEvent,
+  ReadStateUpdateEvent,
   TypingStartEvent,
+  VoiceStateUpdateEvent,
 } from "../../generated/aster-gateway";
 import { GatewayEvent, GatewayIntent, GatewayOpcode } from "../../generated/aster-gateway-constants";
 import { configuredApiOrigin, normalizeApiOrigin } from "../auth/api";
 
-export type MessageGatewayEvent = MessageCreateEvent | MessageUpdateEvent | MessageDeleteEvent | MessageReactionAddEvent | MessageReactionRemoveEvent | TypingStartEvent;
+export type WorkspaceGatewayEvent =
+  | MessageCreateEvent | MessageUpdateEvent | MessageDeleteEvent
+  | MessageReactionAddEvent | MessageReactionRemoveEvent | TypingStartEvent
+  | MemberJoinEvent | MemberUpdateEvent | MemberLeaveEvent | PresenceUpdateEvent
+  | ChannelCreateEvent | ChannelUpdateEvent | ChannelDeleteEvent
+  | ReadStateUpdateEvent | VoiceStateUpdateEvent;
+export type MessageGatewayEvent = Extract<WorkspaceGatewayEvent, { t: `MESSAGE_${string}` | "TYPING_START" }>;
 export type GatewayStatus = "idle" | "connecting" | "connected" | "reconnecting" | "failed" | "stopped";
 
 type GatewaySocket = {
@@ -33,7 +48,7 @@ type GatewayScheduler = {
 type AsterGatewayClientOptions = {
   accessToken: string;
   url?: string;
-  onEvent: (event: MessageGatewayEvent) => void;
+  onEvent: (event: WorkspaceGatewayEvent) => void;
   onStatus?: (status: GatewayStatus) => void;
   onError?: (message: string) => void;
   socketFactory?: (url: string) => GatewaySocket;
@@ -44,7 +59,9 @@ type AsterGatewayClientOptions = {
 const socketOpen = 1;
 const reconnectBaseDelayMs = 1_000;
 const reconnectMaximumDelayMs = 30_000;
-const requestedIntents = GatewayIntent.GUILDS | GatewayIntent.GUILD_MESSAGES | GatewayIntent.MESSAGE_CONTENT | GatewayIntent.REACTIONS | GatewayIntent.TYPING;
+const requestedIntents = GatewayIntent.GUILDS | GatewayIntent.GUILD_MEMBERS | GatewayIntent.GUILD_MESSAGES
+  | GatewayIntent.DIRECT_MESSAGES | GatewayIntent.MESSAGE_CONTENT | GatewayIntent.GUILD_VOICE_STATES
+  | GatewayIntent.GUILD_PRESENCES | GatewayIntent.REACTIONS | GatewayIntent.TYPING;
 
 const defaultScheduler: GatewayScheduler = {
   setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
@@ -77,7 +94,7 @@ export function configuredGatewayUrl(): string {
 export class AsterGatewayClient {
   private readonly accessToken: string;
   private readonly baseUrl: string;
-  private readonly onEvent: (event: MessageGatewayEvent) => void;
+  private readonly onEvent: (event: WorkspaceGatewayEvent) => void;
   private readonly onStatus: (status: GatewayStatus) => void;
   private readonly onError: (message: string) => void;
   private readonly socketFactory: (url: string) => GatewaySocket;
@@ -242,6 +259,15 @@ export class AsterGatewayClient {
       || message.t === GatewayEvent.MESSAGE_REACTION_ADD
       || message.t === GatewayEvent.MESSAGE_REACTION_REMOVE
       || message.t === GatewayEvent.TYPING_START
+      || message.t === GatewayEvent.MEMBER_JOIN
+      || message.t === GatewayEvent.MEMBER_UPDATE
+      || message.t === GatewayEvent.MEMBER_LEAVE
+      || message.t === GatewayEvent.PRESENCE_UPDATE
+      || message.t === GatewayEvent.CHANNEL_CREATE
+      || message.t === GatewayEvent.CHANNEL_UPDATE
+      || message.t === GatewayEvent.CHANNEL_DELETE
+      || message.t === GatewayEvent.READ_STATE_UPDATE
+      || message.t === GatewayEvent.VOICE_STATE_UPDATE
     ) {
       this.onEvent(message);
     }

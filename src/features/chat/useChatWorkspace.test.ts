@@ -10,6 +10,7 @@ const source: Message = {
   reply_to_message_id: null,
   reply_to: null,
   reactions: [],
+  attachments: [],
   created_at: "2026-08-23T00:00:00Z",
   edited_at: null,
 };
@@ -29,6 +30,7 @@ const reply: Message = {
     edited_at: source.edited_at,
   },
   reactions: [],
+  attachments: [],
   created_at: "2026-08-23T00:01:00Z",
   edited_at: null,
 };
@@ -58,8 +60,15 @@ describe("message reply state", () => {
       t: "MESSAGE_UPDATE",
       s: 2,
       d: {
-        ...source,
+        id: source.id,
+        channel_id: source.channel_id,
+        author: source.author,
         content: "Gateway編集",
+        reply_to_message_id: source.reply_to_message_id,
+        reply_to: source.reply_to,
+        attachments: [],
+        created_at: source.created_at,
+        edited_at: source.edited_at,
       },
     });
 

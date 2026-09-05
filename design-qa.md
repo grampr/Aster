@@ -67,3 +67,15 @@ No actionable P0, P1, or P2 differences remain.
 ## Follow-up polish
 
 - P3: introduce additional unique guild/member artwork as production identities become available; the current generated assets intentionally reuse a few portraits for realistic mock density.
+
+## Real-data E2E extension
+
+- Text messages, read state, presence, and Gateway updates were verified against the local Aster Server.
+- Attachment upload, finalize, download intent, and image preview were verified against local MinIO.
+- Voice join/leave and the mute, deafen, camera, and screen-share control boundary were verified with the local media provider.
+- Real message content and member counts intentionally differ from the fixed visual fixture; the four-column hierarchy, density, attachment anatomy, and appearance controls remain unchanged.
+
+## Desktop boundary
+
+- The macOS bundle builds, starts, and reaches the OS credential-store permission boundary.
+- Browser E2E covers the same client build without persisting a desktop refresh token; approving the signed app's keychain access remains an interactive host step.
