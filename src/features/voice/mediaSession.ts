@@ -29,6 +29,8 @@ export interface VoiceMediaSession {
   subscribe(listener: (snapshot: VoiceMediaSnapshot) => void): () => void;
 }
 
+type RealtimeKitClientFactory = (credential: string) => Promise<RealtimeKitClient>;
+
 type MutableSnapshot = VoiceMediaSnapshot;
 
 abstract class ObservableVoiceSession implements VoiceMediaSession {
@@ -145,13 +147,15 @@ export class RealtimeKitVoiceMediaSession extends ObservableVoiceSession {
   private readonly cleanups: Array<() => void> = [];
   private readonly observedParticipantIds = new Set<string>();
 
-  constructor(private readonly credential: string) {
+  constructor(
+    private readonly credential: string,
+    private readonly createClient: RealtimeKitClientFactory = initializeRealtimeKitClient,
+  ) {
     super();
   }
 
   async connect(initialMute: boolean, initialDeaf: boolean): Promise<void> {
-    const { default: Client } = await import("@cloudflare/realtimekit");
-    this.client = await Client.init({ authToken: this.credential, defaults: { audio: false, video: false } });
+    this.client = await this.createClient(this.credential);
     await this.client.join();
     this.observeParticipantMap();
     this.observeSelf();
@@ -280,6 +284,11 @@ export class RealtimeKitVoiceMediaSession extends ObservableVoiceSession {
     if (!this.client) throw new Error("Voice Sessionへ接続していません。");
     return this.client;
   }
+}
+
+async function initializeRealtimeKitClient(credential: string): Promise<RealtimeKitClient> {
+  const { default: Client } = await import("@cloudflare/realtimekit");
+  return Client.init({ authToken: credential, defaults: { audio: false, video: false } });
 }
 
 export function createVoiceMediaSession(session: VoiceSession): VoiceMediaSession {
