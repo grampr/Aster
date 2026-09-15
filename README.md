@@ -94,9 +94,13 @@ npm run test:sites
 npm run tauri:check
 ```
 
-現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信、返信、Reaction、編集、削除、外観設定、表示密度、アクセントカラー、文字サイズ、アイコンサイズ、フォント選択、設定のImportとExport、メンバーリスト表示、カラム幅調整、音声通話コントロールの操作状態が含まれます。
+現在のプロトタイプには、4カラムレイアウト、チャンネルとコミュニティの選択、検索、メッセージの送信、返信、Reaction、編集、削除、添付ファイル、メンバーとPresence、外観設定、表示密度、アクセントカラー、文字サイズ、アイコンサイズ、フォント選択、設定のImportとExport、メンバーリスト表示、カラム幅調整、音声通話、カメラ、画面共有が含まれます。
 
-Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Text ChannelのMessageを取得します。Messageの投稿と返信、Unicode絵文字によるReaction、自分のMessageのインライン編集と確認付き削除、Cursorによる過去Messageの追加取得、Gatewayによるリアルタイム反映に対応しています。返信元が編集された場合は参照内容を更新し、削除または閲覧不能になった場合は本文を表示できない状態として示します。Reaction Eventの件数は現在値として適用するため、Gatewayから再配信されても二重に加算しません。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。開発時のデモモードでは、Serverなしで同じ操作を含むサンプルUIを確認できます。Member、Presence、Voiceは対応するProtocolが未定義のため、現時点ではデモ表示です。
+Password認証でログインすると、Aster Serverから参加Guild、Guild内Channel、Member、Role、Read State、Voice State、Text ChannelのMessageを取得します。Messageの投稿と返信、Unicode絵文字によるReaction、自分のMessageのインライン編集と確認付き削除、Cursorによる過去Messageの追加取得、Gatewayによるリアルタイム反映に対応しています。返信元が編集された場合は参照内容を更新し、削除または閲覧不能になった場合は本文を表示できない状態として示します。Reaction Eventの件数は現在値として適用するため、Gatewayから再配信されても二重に加算しません。Gateway切断時は最後に適用したSequenceからSessionをResumeし、復帰不能な場合だけ新しいSessionを開始します。
+
+添付ファイルはAster Serverから短命なUpload／Download Intentを取得し、Object Storageへ直接送受信します。Voiceは開発用の`aster-local` Providerと本番用の`cloudflare-realtimekit` Providerに対応し、参加、退出、Mute、Deafen、Camera、Screen Shareの状態をGatewayと同期します。開発時のデモモードでは、Serverなしで同じ操作を含むサンプルUIを確認できます。
+
+RealtimeKitを使った2クライアントの実通信確認は、[RealtimeKit E2E手順](docs/realtimekit-e2e.md)を参照してください。
 
 ### API接続先
 

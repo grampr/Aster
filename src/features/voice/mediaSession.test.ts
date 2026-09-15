@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import { createVoiceMediaSession, LocalVoiceMediaSession } from "./mediaSession";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type RealtimeKitClient from "@cloudflare/realtimekit";
+import { createVoiceMediaSession, LocalVoiceMediaSession, RealtimeKitVoiceMediaSession } from "./mediaSession";
 import type { VoiceSession } from "../auth/types";
 
 type FakeTrack = MediaStreamTrack & { enabled: boolean; stopped: boolean; onended: (() => void) | null };
@@ -15,6 +16,26 @@ function fakeStream(audio: FakeTrack[] = [], video: FakeTrack[] = []): MediaStre
     getVideoTracks: () => video,
   } as unknown as MediaStream;
 }
+
+class FakeEmitter {
+  private readonly listeners = new Map<string, Set<() => void>>();
+
+  on(event: string, listener: () => void): void {
+    const listeners = this.listeners.get(event) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(event, listeners);
+  }
+
+  off(event: string, listener: () => void): void {
+    this.listeners.get(event)?.delete(listener);
+  }
+
+  emit(event: string): void {
+    for (const listener of this.listeners.get(event) ?? []) listener();
+  }
+}
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("LocalVoiceMediaSession", () => {
   it("controls microphone, camera, screen share, and releases every track", async () => {
@@ -72,5 +93,71 @@ describe("createVoiceMediaSession", () => {
 
   it("rejects an unknown provider", () => {
     expect(() => createVoiceMediaSession({ ...baseSession, provider: "unknown" })).toThrow("未対応のVoice Provider");
+  });
+});
+
+describe("RealtimeKitVoiceMediaSession", () => {
+  it("connects with a participant token and reflects remote camera and screen tracks", async () => {
+    const camera = fakeTrack();
+    const screen = fakeTrack();
+    const remote = Object.assign(new FakeEmitter(), {
+      id: "peer-2",
+      name: "みさき",
+      audioTrack: null,
+      videoTrack: camera,
+      screenShareTracks: { video: screen, audio: null },
+      audioEnabled: false,
+      videoEnabled: true,
+      screenShareEnabled: true,
+    });
+    const participants: typeof remote[] = [];
+    const joined = Object.assign(new FakeEmitter(), {
+      values: () => participants.values(),
+    });
+    const self = Object.assign(new FakeEmitter(), {
+      audioEnabled: false,
+      videoEnabled: false,
+      screenShareEnabled: false,
+      videoTrack: null,
+      screenShareTracks: { video: null, audio: null },
+      enableAudio: vi.fn(async () => { self.audioEnabled = true; }),
+      disableAudio: vi.fn(async () => { self.audioEnabled = false; }),
+      enableVideo: vi.fn(async () => { self.videoEnabled = true; }),
+      disableVideo: vi.fn(async () => { self.videoEnabled = false; }),
+      enableScreenShare: vi.fn(async () => { self.screenShareEnabled = true; }),
+      disableScreenShare: vi.fn(async () => { self.screenShareEnabled = false; }),
+      playAudio: vi.fn(async () => undefined),
+    });
+    const client = {
+      self,
+      participants: { joined },
+      join: vi.fn(async () => undefined),
+      leave: vi.fn(async () => undefined),
+    } as unknown as RealtimeKitClient;
+    const createClient = vi.fn(async () => client);
+    vi.stubGlobal("MediaStream", class {
+      constructor(readonly tracks: MediaStreamTrack[]) {}
+    });
+
+    const session = new RealtimeKitVoiceMediaSession("participant-token", createClient);
+    await session.connect(true, false);
+
+    expect(createClient).toHaveBeenCalledWith("participant-token");
+    expect(client.join).toHaveBeenCalledOnce();
+    expect(self.playAudio).toHaveBeenCalledOnce();
+    expect(session.snapshot().surfaces).toEqual([]);
+
+    participants.push(remote);
+    joined.emit("participantJoined");
+    expect(session.snapshot().surfaces.map((surface) => [surface.id, surface.kind])).toEqual([
+      ["peer-2:screen", "screen"],
+      ["peer-2:camera", "camera"],
+    ]);
+
+    await session.setMuted(false);
+    expect(self.enableAudio).toHaveBeenCalledOnce();
+    await session.disconnect();
+    expect(client.leave).toHaveBeenCalledOnce();
+    expect(session.snapshot().surfaces).toEqual([]);
   });
 });
