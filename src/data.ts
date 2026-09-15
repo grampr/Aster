@@ -1,16 +1,18 @@
 export type Channel = {
   id: string;
   label: string;
-  kind: "text" | "voice";
+  kind: "text" | "voice" | "category" | "thread" | "direct";
+  parentId?: string | null;
   unread?: number;
   activeUsers?: number;
 };
 
 export type Member = {
+  id?: string;
   name: string;
   avatar: string;
   status: "online" | "away" | "offline";
-  role: "運営" | "モデレーター" | "メンバー";
+  role: string;
   detail?: string;
 };
 
@@ -26,10 +28,19 @@ export type ChatMessage = {
   reply?: { author: string; body: string; avatar: string };
   threadLabel?: string;
   afterReply?: string;
-  attachment?: boolean;
+  attachments?: ViewAttachment[];
   reactions?: Array<{ emoji: string; count: number; me: boolean }>;
   editable?: boolean;
   edited?: boolean;
+};
+
+export type ViewAttachment = {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  previewUrl?: string;
+  download?: () => Promise<Blob>;
 };
 
 export const assets = {
@@ -121,7 +132,13 @@ export const initialMessages: ChatMessage[] = [
     avatar: assets.akari,
     time: "10:22",
     lines: ["チラシのドラフトを作ってみました。ご確認お願いします〜"],
-    attachment: true,
+    attachments: [{
+      id: "demo-flyer",
+      filename: "イベント チラシ案_v1.jpg",
+      contentType: "image/jpeg",
+      size: 1_200_000,
+      previewUrl: assets.flyer,
+    }],
     reactions: [{ emoji: "👍", count: 1, me: false }],
   },
 ];
