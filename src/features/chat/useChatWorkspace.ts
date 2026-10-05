@@ -2,15 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { GatewayGuildMember, GatewayPresence, GatewayUserSummary, GatewayVoiceState } from "../../generated/aster-gateway";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "../auth/api";
-import type { Attachment, Channel, Guild, GuildMember, Message, MessageReaction, ReadState, Role, VoiceSession, VoiceState } from "../auth/types";
+import type { Attachment, Channel, CreateChannelRequest, CreateInviteRequest, Guild, GuildMember, Invite, Message, MessageReaction, MessageSearchResult, ReadState, Role, UpdateGuildMemberRequest, VoiceSession, VoiceState } from "../auth/types";
+import { effectivePermissions } from "./permissions";
 import { createVoiceMediaSession, type VoiceMediaSession, type VoiceMediaSnapshot } from "../voice/mediaSession";
 import { AsterGatewayClient, type GatewayStatus, type MessageGatewayEvent, type WorkspaceGatewayEvent } from "./gateway";
+
+export function describeWorkspaceError(error: unknown): string {
+  return messageForError(error);
+}
 
 function messageForError(error: unknown): string {
   if (error instanceof AsterNetworkError) return error.message;
   if (error instanceof AsterApiError) {
     if (error.status === 401) return "セッションの有効期限が切れました。再ログインしてください。";
     if (error.status === 403) return "この操作を行う権限がありません。";
+    if (error.code === "INVITE_UNAVAILABLE") return "この招待は期限切れか、使用回数の上限に達しています。";
+    if (error.code === "THREAD_ALREADY_EXISTS") return "このメッセージのスレッドは既にあります。";
     if (error.status === 404) return "選択した項目を取得できませんでした。";
     if (error.code === "RATE_LIMITED") return "リクエストが多すぎます。少し待ってからお試しください。";
     return error.message;
@@ -29,6 +36,7 @@ export type VoiceConnectionStatus = "idle" | "joining" | "connected" | "leaving"
 export type ChatWorkspace = {
   guilds: Guild[];
   channels: Channel[];
+  directChannels: Channel[];
   members: GuildMember[];
   roles: Role[];
   readStates: ReadState[];
@@ -70,6 +78,20 @@ export type ChatWorkspace = {
   setVoiceVideo: (value: boolean) => Promise<void>;
   setVoiceScreenShare: (value: boolean) => Promise<void>;
   fetchAttachment: (attachment: Attachment) => Promise<Blob>;
+  /** The signed-in user's permission bits in the active guild, for deciding which controls to offer. */
+  permissions: number;
+  createGuild: (name: string) => Promise<void>;
+  joinGuild: (inviteCode: string) => Promise<void>;
+  leaveGuild: () => Promise<void>;
+  createChannel: (request: CreateChannelRequest) => Promise<void>;
+  createInvite: (request: CreateInviteRequest) => Promise<Invite>;
+  createThread: (name: string, messageId?: string) => Promise<void>;
+  openDirectChannel: (userId: string) => Promise<void>;
+  searchMessages: (query: string, cursor?: string) => Promise<{ items: MessageSearchResult[]; nextCursor: string | null }>;
+  updateMember: (userId: string, request: UpdateGuildMemberRequest) => Promise<void>;
+  removeMember: (userId: string) => Promise<void>;
+  listInvites: () => Promise<Invite[]>;
+  revokeInvite: (inviteId: string) => Promise<void>;
   retry: () => void;
 };
 
@@ -77,6 +99,7 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
   const api = useMemo(() => new AsterApiClient(), []);
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [directChannels, setDirectChannels] = useState<Channel[]>([]);
   const [members, setMembers] = useState<GuildMember[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [readStates, setReadStates] = useState<ReadState[]>([]);
@@ -108,6 +131,8 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
   const selectedChannelIdRef = useRef<string | null>(null);
   const activeGuildIdRef = useRef<string | null>(null);
   const accessTokenRef = useRef<string | null>(accessToken);
+  const guildsRef = useRef<Guild[]>([]);
+  guildsRef.current = guilds;
   const voiceAdapterRef = useRef<VoiceMediaSession | null>(null);
   const voiceUnsubscribeRef = useRef<(() => void) | null>(null);
   const typingTimersRef = useRef(new Map<string, ReturnType<typeof globalThis.setTimeout>>());
@@ -133,11 +158,13 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
 
   const handleGatewayEvent = useCallback((event: WorkspaceGatewayEvent) => {
     if (event.t === "CHANNEL_CREATE" || event.t === "CHANNEL_UPDATE") {
-      if (event.d.guild_id === activeGuildIdRef.current) setChannels((current) => upsertChannel(current, event.d));
+      if (event.d.guild_id === null) setDirectChannels((current) => upsertDirectChannel(current, event.d));
+      else if (event.d.guild_id === activeGuildIdRef.current) setChannels((current) => upsertChannel(current, event.d));
       return;
     }
     if (event.t === "CHANNEL_DELETE") {
       setChannels((current) => current.filter((channel) => channel.id !== event.d.id));
+      setDirectChannels((current) => current.filter((channel) => channel.id !== event.d.id));
       return;
     }
     if (event.t === "MEMBER_JOIN" || event.t === "MEMBER_UPDATE") {
@@ -218,6 +245,18 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
 
   useEffect(() => {
     if (!accessToken) {
+      setDirectChannels([]);
+      return;
+    }
+    let cancelled = false;
+    void loadAllPages((cursor) => api.listDirectChannels(accessToken, cursor, 100))
+      .then((items) => { if (!cancelled) setDirectChannels(items); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [accessToken, api, retryVersion]);
+
+  useEffect(() => {
+    if (!accessToken) {
       setGuilds([]);
       setActiveGuildId(null);
       setLoadingGuilds(false);
@@ -283,7 +322,18 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     return () => { cancelled = true; };
   }, [accessToken, activeGuildId, api, retryVersion]);
 
-  const selectedChannel = channels.find((channel) => channel.id === selectedChannelId);
+  const selectedChannel = channels.find((channel) => channel.id === selectedChannelId)
+    ?? directChannels.find((channel) => channel.id === selectedChannelId);
+
+  // Threads hang off a text channel, so they are loaded when that channel is opened.
+  useEffect(() => {
+    if (!accessToken || !selectedChannelId || selectedChannel?.type !== "TEXT") return;
+    let cancelled = false;
+    void loadAllPages((cursor) => api.listChannelThreads(selectedChannelId, accessToken, cursor, 100))
+      .then((threads) => { if (!cancelled) setChannels((current) => threads.reduce(upsertChannel, current)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [accessToken, api, selectedChannel?.type, selectedChannelId]);
   useEffect(() => {
     clearTypingUsers();
     lastTypingSignalRef.current = { channelId: selectedChannelId, sentAt: 0 };
@@ -309,7 +359,7 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
 
   useEffect(() => {
     if (!accessToken || !selectedChannelId || loadingMessages) return;
-    const latest = messages.at(-1);
+    const latest = latestMessageOf(messages, selectedChannelId);
     if (!latest || markedReadRef.current.get(selectedChannelId) === latest.id) return;
     markedReadRef.current.set(selectedChannelId, latest.id);
     setUnreadChannelIds((current) => {
@@ -545,10 +595,107 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     return api.fetchAttachmentContent(attachment.download_url, accessToken);
   }, [accessToken, api]);
 
+  const requireToken = (): string => {
+    const token = accessTokenRef.current;
+    if (!token) throw new Error("ログインしていません。");
+    return token;
+  };
+
+  const createGuild = useCallback(async (name: string) => {
+    const guild = await api.createGuild({ name: name.trim() }, requireToken());
+    setGuilds((current) => [guild, ...current.filter((item) => item.id !== guild.id)]);
+    setActiveGuildId(guild.id);
+  }, [api]);
+
+  const joinGuild = useCallback(async (inviteCode: string) => {
+    const token = requireToken();
+    const member = await api.acceptInvite(inviteCode.trim(), token);
+    const items = await loadAllPages((cursor) => api.listGuilds(token, cursor, 100));
+    setGuilds(items);
+    setActiveGuildId(member.guild_id);
+  }, [api]);
+
+  const leaveGuild = useCallback(async () => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return;
+    await api.leaveGuild(guildId, requireToken());
+    const remaining = guildsRef.current.filter((guild) => guild.id !== guildId);
+    setGuilds(remaining);
+    setActiveGuildId(remaining[0]?.id ?? null);
+  }, [api]);
+
+  const createChannel = useCallback(async (request: CreateChannelRequest) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) throw new Error("コミュニティを選択してください。");
+    const channel = await api.createGuildChannel(guildId, request, requireToken());
+    setChannels((current) => upsertChannel(current, channel));
+  }, [api]);
+
+  const createInvite = useCallback(async (request: CreateInviteRequest) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) throw new Error("コミュニティを選択してください。");
+    return api.createGuildInvite(guildId, request, requireToken());
+  }, [api]);
+
+  const listInvites = useCallback(async () => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return [];
+    return (await api.listGuildInvites(guildId, requireToken())).items;
+  }, [api]);
+
+  const revokeInvite = useCallback(async (inviteId: string) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return;
+    await api.deleteGuildInvite(guildId, inviteId, requireToken());
+  }, [api]);
+
+  const createThread = useCallback(async (name: string, messageId?: string) => {
+    const parentId = selectedChannelIdRef.current;
+    if (!parentId) throw new Error("チャンネルを選択してください。");
+    const thread = await api.createChannelThread(parentId, { name: name.trim(), ...(messageId ? { message_id: messageId } : {}) }, requireToken());
+    setChannels((current) => upsertChannel(current, thread));
+    selectedChannelIdRef.current = thread.id;
+    setSelectedChannelId(thread.id);
+  }, [api]);
+
+  const openDirectChannel = useCallback(async (userId: string) => {
+    const channel = await api.openDirectChannel({ recipient_id: userId }, requireToken());
+    setDirectChannels((current) => upsertDirectChannel(current, channel));
+    selectedChannelIdRef.current = channel.id;
+    setSelectedChannelId(channel.id);
+  }, [api]);
+
+  const searchMessages = useCallback(async (query: string, cursor?: string) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return { items: [], nextCursor: null };
+    const page = await api.searchGuildMessages(guildId, query.trim(), requireToken(), cursor, 20);
+    return { items: page.items, nextCursor: page.page.has_more ? page.page.next_cursor : null };
+  }, [api]);
+
+  const updateMember = useCallback(async (userId: string, request: UpdateGuildMemberRequest) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return;
+    const updated = await api.updateGuildMember(guildId, userId, request, requireToken());
+    setMembers((current) => upsertMember(current, updated));
+  }, [api]);
+
+  const removeMember = useCallback(async (userId: string) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return;
+    await api.removeGuildMember(guildId, userId, requireToken());
+    setMembers((current) => current.filter((member) => member.user.id !== userId));
+  }, [api]);
+
+  const permissions = useMemo(() => effectivePermissions(
+    guilds.find((guild) => guild.id === activeGuildId),
+    members.find((member) => member.user.id === currentUserId),
+    roles,
+  ), [activeGuildId, currentUserId, guilds, members, roles]);
+
   const retry = useCallback(() => setRetryVersion((value) => value + 1), []);
 
   return {
-    guilds, channels, members, roles, readStates, voiceStates, messages, activeGuildId, selectedChannelId,
+    guilds, channels, directChannels, members, roles, readStates, voiceStates, messages, activeGuildId, selectedChannelId,
     activeVoiceChannelId: voiceSession?.state.channel_id ?? null, unreadChannelIds,
     loadingGuilds, loadingChannels, loadingMembers, loadingMessages, sending, uploads,
     updatingMessageId, deletingMessageId, reactingKey, typingUsers,
@@ -556,7 +703,18 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     voiceStatus, voiceMedia, error: error ?? gatewayError, voiceError,
     selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, toggleReaction, notifyTyping, loadOlderMessages,
     joinVoice, leaveVoice, setVoiceMuted, setVoiceDeafened, setVoiceVideo, setVoiceScreenShare, fetchAttachment, retry,
+    createThread, openDirectChannel, searchMessages, updateMember, removeMember,
+    permissions, createGuild, joinGuild, leaveGuild, createChannel, createInvite, listInvites, revokeInvite,
   };
+}
+
+/**
+ * The newest message of a channel to report as read. Right after a channel switch the list
+ * can still hold the previous channel's messages, which the server rejects for this channel.
+ */
+export function latestMessageOf(messages: Message[], channelId: string): Message | undefined {
+  const latest = messages.at(-1);
+  return latest?.channel_id === channelId ? latest : undefined;
 }
 
 export function upsertTypingUser(users: GatewayUserSummary[], incoming: GatewayUserSummary): GatewayUserSummary[] {
@@ -629,6 +787,10 @@ function upsertChannel(channels: Channel[], incoming: Channel): Channel[] {
   const next = channels.filter((channel) => channel.id !== incoming.id);
   next.push(incoming);
   return next.sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
+}
+
+function upsertDirectChannel(channels: Channel[], incoming: Channel): Channel[] {
+  return [incoming, ...channels.filter((channel) => channel.id !== incoming.id)];
 }
 
 function upsertMember(members: GuildMember[], incoming: GuildMember): GuildMember[] {

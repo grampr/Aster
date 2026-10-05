@@ -4,7 +4,7 @@ Aster は、リアルタイムなチャットと音声通話、セルフホス�
 
 > [!IMPORTANT]
 > Aster は設計初期段階にあります。
-> 現在はTauriデスクトップシェル、Password・Google認証クライアント、Guild・Channel・Message API、Message Gateway接続を実行できます。安定版APIは開発中です。
+> 現在はTauriデスクトップシェル、Password・Google認証（登録、パスワード再設定、メール確認、Google連携を含む）、コミュニティの作成・招待・参加、チャンネル・カテゴリ・スレッド・ダイレクトメッセージ、メッセージ検索、添付ファイル、Voice（LiveKit）、Gateway接続を実行できます。安定版APIは開発中です。
 
 ## 目指すもの
 
@@ -68,6 +68,15 @@ Go バックエンドは認証、権限、メッセージ、Gateway、音声セ�
 
 Cloudflare は初期開発の速度と帯域コストを考慮した選択です。
 セルフホスト環境で R2、S3、MinIO、別の SFU などへ差し替えられるように、Aster のコア機能から Provider 固有の型と処理を分離します。
+
+## サーバーと接続して試す
+
+[Aster Server](https://github.com/grampr/aster-server)を`make docker-up`で起動すると、PostgreSQL、MinIO、LiveKit、開発用メール受信（`http://localhost:8025`）を含む環境が立ち上がります。
+クライアントは既定で`http://127.0.0.1:8080`へ接続します。別の接続先は`VITE_ASTER_API_URL`で指定します。
+サーバーは`ASTER_CORS_ALLOWED_ORIGINS`に含まれるOrigin（既定でViteの`http://localhost:5173`とTauri）からのAPI呼び出しだけを許可します。
+
+メールに書かれた確認コードは、アカウント画面または再設定画面へ貼り付けて使えます。Tauri版では、メールのリンク（`aster://auth/verify-email`、`aster://auth/reset-password`）からも開けます。
+Voiceは`livekit`と`cloudflare-realtimekit`のProviderに対応し、Serverが返す`provider`で切り替えます。
 
 ## UI プロトタイプを起動する
 
