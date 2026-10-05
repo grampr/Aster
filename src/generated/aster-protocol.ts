@@ -60,6 +60,10 @@ export interface paths {
          * @description Desktop Clientが生成したPKCE S256 ChallengeとClient Stateを短時間のLogin試行へ保存し、
          *     System Browserで開くGoogle Authorization URLを返します。
          *     ServerはGoogle向けのOAuth StateとOpenID Connect Nonceを別に生成し、Clientへ秘密情報を返しません。
+         *
+         *     Bearer Access Tokenを付けて呼ぶと、サインイン中のAccountへGoogle IdentityをLinkするための試行になります。
+         *     その場合のExchange Codeは`POST /auth/google/link`だけで使用できます。
+         *     Access Tokenを付けない場合は、通常のGoogle Loginです。
          */
         post: operations["beginGoogleAuthorization"];
         delete?: never;
@@ -114,6 +118,120 @@ export interface paths {
          *     `ACCOUNT_LINK_REQUIRED`を返します。
          */
         post: operations["exchangeGoogleAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Google Identityをサインイン中のAccountへLinkする
+         * @description Bearer Access Tokenを付けて`POST /auth/google/authorize`を呼ぶと、そのLogin試行はLink用になります。
+         *     Link用のExchange Codeは、このOperationだけが同じUserに対して一度だけ使用できます。
+         *     通常のGoogle Login（`POST /auth/google/exchange`）では使用できません。
+         *     Email Addressが違っていても、サインイン中のUserが明示的に行うため自動Linkには当たりません。
+         */
+        post: operations["linkGoogleIdentity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email Addressの所有確認Emailを送る
+         * @description 認証済みUserの現在のEmail Addressへ、24時間有効な確認Tokenを送ります。
+         *     すでに確認済みの場合は何も送らず成功を返します。
+         *     以前に送った未使用のTokenは、新しいTokenを送ると無効になります。
+         *     同じUserへ短時間に何度も送信することはできず、その場合も成功を返してEmailを送りません。
+         */
+        post: operations["requestEmailVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email Addressの所有確認を完了する
+         * @description Emailで届いたTokenを使い、Accountの`email_verified`を`true`にします。
+         *     Tokenは一度だけ使用でき、成功・失敗を問わず再利用できません。
+         *     Token発行後にEmail Addressが変わっていた場合は無効です。
+         *     Tokenが所有確認の根拠なので、Sessionがなくても使用できます。
+         */
+        post: operations["verifyEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Password再設定Emailを送る
+         * @description Password認証を持つAccountのEmail Addressへ、1時間有効な再設定Tokenを送ります。
+         *     Accountの存在を推測できないよう、Accountがない場合やPassword認証がない場合も同じ`202`を返し、
+         *     応答時間も変わらないようにEmailは非同期で送ります。
+         *     新しいTokenを送ると、以前の未使用Tokenは無効になります。
+         */
+        post: operations["requestPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tokenを使ってPasswordを再設定する
+         * @description 新しいPasswordを設定し、そのUserの全てのAster Sessionを破棄します。
+         *     TokenでEmail Addressの所有を確認できたため、`email_verified`も`true`になります。
+         *     Tokenは一度だけ使用でき、成功・失敗を問わず再利用できません。
+         */
+        post: operations["resetPassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -178,6 +296,31 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/@me/authentication-methods/{method}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 対象の認証方法です。 */
+                method: components["parameters"]["AuthenticationMethod"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 認証方法のLinkを解除する
+         * @description Accountに残る認証方法が1つだけになる解除は、Accountに入れなくなるため拒否します。
+         *     Password認証を解除するとPasswordを削除し、Password再設定ではPassword認証を作り直せません。
+         *     Google Identityを解除しても、すでに発行したAster Sessionは有効です。
+         */
+        delete: operations["unlinkAuthenticationMethod"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1999,6 +2142,38 @@ export interface components {
             /** @description Avatar ImageのURLです。未設定の場合はnullです。 */
             avatar_url: string | null;
         };
+        /**
+         * OneTimeToken
+         * @description Email Addressの所有確認やPassword再設定のためにServerがEmailで送る、一度だけ使用できる不透明なTokenです。
+         *     Serverは推測できない値を発行し、Hashだけを保存します。URLやLogへ残さないでください。
+         * @example example-one-time-token-from-an-email-message
+         */
+        OneTimeToken: string;
+        /**
+         * VerifyEmailRequest
+         * @description Emailで届いたTokenを送り、Email Addressの所有確認を完了します。
+         */
+        VerifyEmailRequest: {
+            token: components["schemas"]["OneTimeToken"];
+        };
+        /**
+         * RequestPasswordResetRequest
+         * @description Password再設定用のTokenをEmailで受け取るためのRequestです。
+         * @example {
+         *       "email": "alice@example.com"
+         *     }
+         */
+        RequestPasswordResetRequest: {
+            email: components["schemas"]["Email"];
+        };
+        /**
+         * ResetPasswordRequest
+         * @description Emailで届いたTokenを使い、新しいPasswordを設定します。
+         */
+        ResetPasswordRequest: {
+            token: components["schemas"]["OneTimeToken"];
+            new_password: components["schemas"]["Password"];
+        };
     };
     responses: {
         /** @description 指定された Email Address は登録済みです。 */
@@ -2184,6 +2359,23 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description このInstanceにはEmail送信が設定されていないため、Requestを処理しませんでした。 */
+        MailUnavailable: {
+            headers: {
+                "X-Request-ID": components["headers"]["RequestId"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "MAIL_UNAVAILABLE",
+                 *       "message": "Email delivery is not available",
+                 *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         /** @description 対象AttachmentのUUIDv7です。 */
@@ -2229,6 +2421,8 @@ export interface components {
         ReactionEmoji: components["schemas"]["ReactionEmoji"];
         /** @description 大文字小文字を区別せずMessage本文から探す文字列です。 */
         SearchQuery: string;
+        /** @description 対象の認証方法です。 */
+        AuthenticationMethod: components["schemas"]["AuthenticationMethod"];
     };
     requestBodies: never;
     headers: {
@@ -2490,6 +2684,185 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    linkGoogleIdentity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Google Identityを追加した後のAccountです。 */
+            200: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSelf"];
+                };
+            };
+            400: components["responses"]["InvalidAuthorizationGrant"];
+            401: components["responses"]["Unauthorized"];
+            /** @description このGoogle Identityはすでに別のAccountへLinkされているか、このAccountに既にLinkされています。 */
+            409: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "IDENTITY_ALREADY_LINKED",
+                     *       "message": "This Google identity is already linked to an account",
+                     *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    requestEmailVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確認Emailを送信キューへ入れたか、送信が不要でした。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["MailUnavailable"];
+            default: components["responses"]["Error"];
+        };
+    };
+    verifyEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyEmailRequest"];
+            };
+        };
+        responses: {
+            /** @description Email Addressを確認済みにしました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tokenが無効、失効済み、または使用済みです。 */
+            400: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "INVALID_VERIFICATION_TOKEN",
+                     *       "message": "Verification token is invalid or expired",
+                     *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    requestPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestPasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description 条件に合うAccountがあればEmailを送ります。Response Bodyはありません。 */
+            202: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["MailUnavailable"];
+            default: components["responses"]["Error"];
+        };
+    };
+    resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Passwordを再設定し、既存のSessionを破棄しました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tokenが無効、失効済み、使用済み、または新しいPasswordが要件を満たしません。 */
+            400: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "INVALID_RESET_TOKEN",
+                     *       "message": "Reset token is invalid or expired",
+                     *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
     refreshSession: {
         parameters: {
             query?: never;
@@ -2597,6 +2970,49 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            default: components["responses"]["Error"];
+        };
+    };
+    unlinkAuthenticationMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 対象の認証方法です。 */
+                method: components["parameters"]["AuthenticationMethod"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 認証方法のLinkを解除しました。 */
+            204: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ResourceNotFound"];
+            /** @description Accountに残る最後の認証方法のため解除できません。 */
+            409: {
+                headers: {
+                    "X-Request-ID": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "LAST_AUTHENTICATION_METHOD",
+                     *       "message": "The last authentication method cannot be unlinked",
+                     *       "request_id": "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             429: components["responses"]["RateLimited"];
             default: components["responses"]["Error"];
         };
