@@ -100,9 +100,10 @@ type ViewVoiceState = { userId: string; channelId: string; muted: boolean; deafe
 
 function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect, members: visibleMembers,
   voiceStates, activeVoiceChannelId, voiceStatus, voiceMedia, voiceError, onJoinVoice, onLeaveVoice,
-  onMuted, onDeafened, onVideo, onScreenShare, onOpenStage, onOpenGuildSettings, directChannels,
+  onMuted, onDeafened, onVideo, onScreenShare, onOpenStage, onOpenGuildSettings, directChannels, onOpenAccount,
 }: {
   onOpenGuildSettings?: () => void;
+  onOpenAccount?: () => void;
   directChannels: ViewChannel[];
   channels: ViewChannel[];
   guildName: string;
@@ -260,7 +261,44 @@ function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect,
         onScreenShare={onScreenShare}
         onOpenStage={onOpenStage}
       />
+      <UserPanel media={voiceMedia} onMuted={onMuted} onDeafened={onDeafened} onOpenAccount={onOpenAccount} />
     </aside>
+  );
+}
+
+/** Whether a message continues the previous author's run (same author within seven minutes, no reply header). */
+export function isContinuation(previous: ChatMessage | undefined, message: ChatMessage): boolean {
+  if (!previous || !message.authorId || previous.authorId !== message.authorId) return false;
+  if (message.replyTo || message.replyUnavailable || message.reply) return false;
+  const minutes = (time: string) => {
+    const [hours, mins] = time.split(":").map(Number);
+    return Number.isFinite(hours) && Number.isFinite(mins) ? hours * 60 + mins : null;
+  };
+  const before = minutes(previous.time);
+  const after = minutes(message.time);
+  return before !== null && after !== null && after - before >= 0 && after - before <= 7;
+}
+
+function UserPanel({ media, onMuted, onDeafened, onOpenAccount }: {
+  media: { muted: boolean; deafened: boolean };
+  onMuted: (value: boolean) => Promise<void>;
+  onDeafened: (value: boolean) => Promise<void>;
+  onOpenAccount?: () => void;
+}) {
+  const { user } = useAuth();
+  if (!user) return null;
+  return (
+    <div className="user-panel">
+      <div className="user-panel__who">
+        <Avatar src={assets.mountain} size="small" />
+        <span><strong>{user.display_name}</strong><small>オンライン</small></span>
+      </div>
+      <div className="user-panel__actions">
+        <IconButton label={media.muted ? "ミュート解除" : "ミュート"} active={media.muted} onClick={() => void onMuted(!media.muted).catch(() => undefined)}>{media.muted ? <MicrophoneSlash size={18} /> : <Microphone size={18} />}</IconButton>
+        <IconButton label={media.deafened ? "スピーカーミュート解除" : "スピーカーミュート"} active={media.deafened} onClick={() => void onDeafened(!media.deafened).catch(() => undefined)}><Headphones size={18} /></IconButton>
+        {onOpenAccount && <IconButton label="ユーザー設定" onClick={onOpenAccount}><Gear size={18} /></IconButton>}
+      </div>
+    </div>
   );
 }
 
@@ -278,6 +316,7 @@ function VoiceDock({ channelName, participantCount, status, media, error, onLeav
   onOpenStage: () => void;
 }) {
   if (!channelName || status === "idle" || status === "failed") {
+    if (!error) return null;
     return (
       <div className="voice-dock voice-dock--offline">
         <div><strong>{error ? "通話に接続できません" : "ボイス未接続"}</strong><span>{error ?? "チャンネルを選択して参加"}</span></div>
@@ -532,9 +571,10 @@ function ChatPanel({
         {!loading && enabled && messages.length === 0 && <p className="message-state">まだメッセージはありません。最初のメッセージを送ってみましょう。</p>}
         {!loading && !enabled && <p className="message-state">テキストチャンネルを選択してください。</p>}
         {messages.length > 0 && <div className="date-divider"><span>メッセージ</span></div>}
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <MessageGroup
             key={message.id}
+            continuation={isContinuation(messages[index - 1], message)}
             message={message}
             onReply={setReplyingTo}
             onThread={onCreateThread}
@@ -603,8 +643,9 @@ function ChatPanel({
   );
 }
 
-function MessageGroup({ message, onReply, onThread, onUpdate, onDelete, onToggleReaction, updating, deleting, reactingKey, onFetchAttachment }: {
+function MessageGroup({ message, continuation = false, onReply, onThread, onUpdate, onDelete, onToggleReaction, updating, deleting, reactingKey, onFetchAttachment }: {
   message: ChatMessage;
+  continuation?: boolean;
   onReply: (message: ChatMessage) => void;
   onThread?: (message: ChatMessage) => void;
   onUpdate?: (messageId: ChatMessage["id"], content: string) => Promise<void>;
@@ -666,10 +707,11 @@ function MessageGroup({ message, onReply, onThread, onUpdate, onDelete, onToggle
   };
 
   return (
-    <article className="message-group">
-      <Avatar src={message.avatar} size="large" />
+    <article className={`message-group ${continuation ? "is-continuation" : ""}`}>
+      {continuation ? <time className="message-gutter-time">{message.time}</time> : <Avatar src={message.avatar} size="large" />}
       <div className="message-content">
-        <div className="message-meta"><strong>{message.author}</strong><time>{message.time}</time>{message.edited && <span className="message-edited">編集済み</span>}</div>
+        {!continuation && <div className="message-meta"><strong>{message.author}</strong><time>{message.time}</time>{message.edited && <span className="message-edited">編集済み</span>}</div>}
+        {continuation && message.edited && <span className="message-edited">編集済み</span>}
         {message.replyTo && (
           <div className="message-reply-reference">
             <ArrowBendUpLeft size={15} />
@@ -1098,6 +1140,7 @@ function DesktopWorkspace() {
     <div className={`app-shell ${membersVisible ? "" : "without-members"}`} style={shellStyle}>
       <GuildRail guilds={visibleGuilds} activeGuild={activeGuild} onSelect={isDemo ? setDemoActiveGuild : workspace.selectGuild} onAdd={isDemo ? undefined : () => setAddGuildOpen(true)} />
       <ChannelPanel
+        onOpenAccount={isDemo ? undefined : () => setAccountOpen(true)}
         onOpenGuildSettings={isDemo || !workspace.activeGuildId ? undefined : () => setGuildSettingsOpen(true)}
         directChannels={visibleDirectChannels}
         channels={visibleChannels}
