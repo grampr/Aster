@@ -5,7 +5,7 @@ import { useAuth } from "./AuthProvider";
 import { LoginScreen } from "./LoginScreen";
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, resetToken } = useAuth();
 
   if (status === "checking") {
     return (
@@ -17,6 +17,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (status === "unauthenticated") return <LoginScreen />;
+  // A password reset link takes over even if a session is still open: the reset ends it.
+  if (status === "unauthenticated" || resetToken) return <LoginScreen />;
   return children;
 }

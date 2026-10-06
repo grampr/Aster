@@ -270,3 +270,108 @@ describe("normalizeApiOrigin", () => {
     expect(normalizeApiOrigin("  https://aster.example/// ")).toBe("https://aster.example");
   });
 });
+
+describe("AsterApiClient account, guild and invite operations", () => {
+  type Call = { url: string; method: string; body: unknown; authorization: string | null };
+
+  function recordingClient(status = 200, body: unknown = {}) {
+    const calls: Call[] = [];
+    const transport: FetchTransport = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        authorization: headers.get("Authorization"),
+      });
+      return status === 204 ? new Response(null, { status }) : new Response(JSON.stringify(body), { status });
+    };
+    return { calls, client: new AsterApiClient("https://aster.example", transport) };
+  }
+
+  const base = "https://aster.example/api/v1";
+  const id = "0198b8f0-2d6e-7c45-9a3f-92e3f2f3c1a0";
+
+  it("sends each request to its Protocol path with the right method, body and credentials", async () => {
+    const { calls, client } = recordingClient();
+    await client.registerWithPassword({ email: "a@example.com", password: "p".repeat(15), display_name: "A" });
+    await client.requestPasswordReset({ email: "a@example.com" }).catch(() => undefined);
+    await client.createGuild({ name: "Guild" }, "token");
+    await client.createGuildChannel(id, { type: "CATEGORY", name: "企画" }, "token");
+    await client.updateChannel(id, { parent_id: null }, "token");
+    await client.createChannelThread(id, { name: "議論", message_id: id }, "token");
+    await client.openDirectChannel({ recipient_id: id }, "token");
+    await client.getInvite("code", "token");
+    await client.acceptInvite("code", "token");
+    await client.createGuildInvite(id, { expires_in: 3600, max_uses: 5 }, "token");
+    await client.updateGuildMember(id, id, { nickname: "ニック" }, "token");
+    await client.createGuildRole(id, { name: "Mod", permissions: 4 }, "token");
+    await client.updateGuildRole(id, id, { position: 2 }, "token");
+    await client.beginGoogleAuthorization({
+      redirect_uri: "aster://auth/callback", code_challenge: "c".repeat(43), code_challenge_method: "S256", client_state: "s".repeat(43),
+    }, "token");
+    await client.linkGoogleIdentity({ exchange_code: "e".repeat(40), code_verifier: "v".repeat(43) }, "token");
+
+    expect(calls.map((call) => `${call.method} ${call.url.replace(base, "")}`)).toEqual([
+      "POST /auth/password/register",
+      "POST /auth/password/reset-request",
+      "POST /guilds",
+      `POST /guilds/${id}/channels`,
+      `PATCH /channels/${id}`,
+      `POST /channels/${id}/threads`,
+      "POST /users/@me/channels",
+      "GET /invites/code",
+      "POST /invites/code/accept",
+      `POST /guilds/${id}/invites`,
+      `PATCH /guilds/${id}/members/${id}`,
+      `POST /guilds/${id}/roles`,
+      `PATCH /guilds/${id}/roles/${id}`,
+      "POST /auth/google/authorize",
+      "POST /auth/google/link",
+    ]);
+    expect(calls[0].authorization).toBeNull();
+    expect(calls[2].authorization).toBe("Bearer token");
+    expect(calls[4].body).toEqual({ parent_id: null });
+    expect(calls[13].authorization).toBe("Bearer token");
+  });
+
+  it("handles operations that return no body", async () => {
+    const { calls, client } = recordingClient(204);
+    await client.verifyEmail({ token: "t".repeat(40) });
+    await client.resetPassword({ token: "t".repeat(40), new_password: "p".repeat(15) });
+    await client.requestEmailVerification("token");
+    await client.unlinkAuthenticationMethod("GOOGLE", "token");
+    await client.deleteChannel(id, "token");
+    await client.deleteGuildInvite(id, id, "token");
+    await client.removeGuildMember(id, id, "token");
+    await client.leaveGuild(id, "token");
+    await client.deleteGuildRole(id, id, "token");
+    await client.deleteGuild(id, "token");
+
+    expect(calls.map((call) => `${call.method} ${call.url.replace(base, "")}`)).toEqual([
+      "POST /auth/email/verify",
+      "POST /auth/password/reset",
+      "POST /auth/email/verification",
+      "DELETE /users/@me/authentication-methods/GOOGLE",
+      `DELETE /channels/${id}`,
+      `DELETE /guilds/${id}/invites/${id}`,
+      `DELETE /guilds/${id}/members/${id}`,
+      `DELETE /guilds/${id}/members/@me`,
+      `DELETE /guilds/${id}/roles/${id}`,
+      `DELETE /guilds/${id}`,
+    ]);
+    expect(calls[0].authorization).toBeNull();
+  });
+
+  it("accepts a successful answer without a body", async () => {
+    const transport: FetchTransport = async () => new Response("", { status: 202 });
+    const client = new AsterApiClient("https://aster.example", transport);
+    await expect(client.requestPasswordReset({ email: "a@example.com" })).resolves.toBeUndefined();
+  });
+
+  it("encodes path segments so an invite code cannot change the route", async () => {
+    const { calls, client } = recordingClient();
+    await client.acceptInvite("../guilds", "token");
+    expect(calls[0].url).toBe(`${base}/invites/..%2Fguilds/accept`);
+  });
+});

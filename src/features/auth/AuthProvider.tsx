@@ -2,12 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from "react";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "./api";
+import { InvalidAccountLinkError, parseAccountDeepLink } from "./accountDeepLink";
 import { InvalidGoogleCallbackError, parseGoogleCallback } from "./googleDeepLink";
 import { createOAuthState, createPkcePair } from "./pkce";
 import { isTauriRuntime } from "./runtime";
 import { createRefreshTokenVault, type RefreshTokenVault } from "./storage";
 import { openAuthorizationUrl } from "./systemBrowser";
-import type { AuthContextValue, LoginPasswordRequest, SessionTokenResponse, UserSelf } from "./types";
+import type { AuthContextValue, AuthenticationMethod, AuthNotice, LoginPasswordRequest, RegisterPasswordRequest, SessionTokenResponse, UserSelf } from "./types";
 
 type AuthProviderProps = {
   children: ReactNode;
@@ -25,23 +26,35 @@ type InternalState = {
 const initialState: InternalState = { status: "checking", user: null, error: null, session: null };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+export function describeAuthError(error: unknown): string {
+  return messageForError(error);
+}
+
 function messageForError(error: unknown): string {
   if (error instanceof AsterNetworkError) return error.message;
   if (error instanceof AsterApiError) {
+    if (error.code === "EMAIL_ALREADY_REGISTERED") return "このメールアドレスは既に登録されています。ログインするか、パスワードを再設定してください。";
+    if (error.code === "INVALID_VERIFICATION_TOKEN") return "確認コードが無効か、有効期限が切れています。確認メールをもう一度送ってください。";
+    if (error.code === "INVALID_RESET_TOKEN") return "再設定コードが無効か、有効期限が切れています。もう一度再設定メールを請求してください。";
+    if (error.code === "MAIL_UNAVAILABLE") return "このサーバーではメールを送信できません。管理者に連絡してください。";
+    if (error.code === "IDENTITY_ALREADY_LINKED") return "このGoogleアカウントは既に連携されています。";
+    if (error.code === "LAST_AUTHENTICATION_METHOD") return "最後のログイン方法は解除できません。";
     if (error.code === "INVALID_CREDENTIALS") return "メールアドレスまたはパスワードが正しくありません。";
     if (error.code === "INVALID_AUTHORIZATION_GRANT") return "Google認証の有効期限が切れました。もう一度お試しください。";
     if (error.code === "ACCOUNT_LINK_REQUIRED") return "このメールアドレスは既存アカウントで使用されています。先に既存の方法でログインしてください。";
-    if (error.code === "GOOGLE_AUTHENTICATION_UNAVAILABLE") return "現在Google認証を利用できません。";
+    if (error.code === "GOOGLE_AUTHENTICATION_UNAVAILABLE" || error.code === "GOOGLE_UNAVAILABLE") return "現在Google認証を利用できません。";
     if (error.code === "RATE_LIMITED") return "試行回数が多すぎます。少し待ってからお試しください。";
+    if (error.status === 429) return "試行回数が多すぎます。少し待ってからお試しください。";
     if (error.status === 401) return "セッションの有効期限が切れました。もう一度ログインしてください。";
     return error.message;
   }
-  if (error instanceof InvalidGoogleCallbackError) return error.message;
+  if (error instanceof InvalidGoogleCallbackError || error instanceof InvalidAccountLinkError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return "認証処理で予期しないエラーが発生しました。";
 }
 
 type PendingGoogleLogin = {
+  mode: "login" | "link";
   state: string;
   verifier: string;
   timeout: number;
@@ -65,6 +78,10 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
   const restorePromise = useRef<Promise<void> | null>(null);
   const pendingGoogleLogin = useRef<PendingGoogleLogin | null>(null);
   const [googleStatus, setGoogleStatus] = useState<AuthContextValue["googleStatus"]>("idle");
+  const [notice, setNotice] = useState<AuthNotice | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const sessionRef = useRef<SessionTokenResponse | null>(null);
+  sessionRef.current = state.session;
 
   const clearPendingGoogleLogin = useCallback(() => {
     if (pendingGoogleLogin.current) window.clearTimeout(pendingGoogleLogin.current.timeout);
@@ -131,10 +148,10 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
     }
   }, [acceptSession, api]);
 
-  const loginWithGoogle = useCallback(async () => {
+  const beginGoogle = useCallback(async (mode: "login" | "link", accessToken?: string) => {
     clearPendingGoogleLogin();
     setGoogleStatus("opening");
-    setState((current) => ({ ...current, error: null }));
+    if (mode === "login") setState((current) => ({ ...current, error: null }));
     try {
       const pkce = await createPkcePair();
       const clientState = createOAuthState();
@@ -143,23 +160,34 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
         code_challenge: pkce.challenge,
         code_challenge_method: "S256",
         client_state: clientState,
-      });
+      }, accessToken);
       const timeout = window.setTimeout(() => {
         if (pendingGoogleLogin.current?.state !== clientState) return;
         pendingGoogleLogin.current = null;
         setGoogleStatus("idle");
-        setState((current) => ({ ...current, error: "Google認証の待機時間が終了しました。もう一度お試しください。" }));
+        const text = "Google認証の待機時間が終了しました。もう一度お試しください。";
+        if (mode === "link") setNotice({ kind: "error", text });
+        else setState((current) => ({ ...current, error: text }));
       }, authorization.expires_in * 1000);
-      pendingGoogleLogin.current = { state: clientState, verifier: pkce.verifier, timeout };
+      pendingGoogleLogin.current = { mode, state: clientState, verifier: pkce.verifier, timeout };
       setGoogleStatus("waiting");
       await openAuthorizationUrl(authorization.authorization_url);
     } catch (error) {
       clearPendingGoogleLogin();
       setGoogleStatus("idle");
-      setState({ status: "unauthenticated", user: null, error: messageForError(error), session: null });
+      if (mode === "link") setNotice({ kind: "error", text: messageForError(error) });
+      else setState({ status: "unauthenticated", user: null, error: messageForError(error), session: null });
       throw error;
     }
   }, [api, clearPendingGoogleLogin]);
+
+  const loginWithGoogle = useCallback(() => beginGoogle("login"), [beginGoogle]);
+
+  const linkGoogle = useCallback(async () => {
+    const token = sessionRef.current?.access_token;
+    if (!token) throw new Error("ログインしていません。");
+    await beginGoogle("link", token);
+  }, [beginGoogle]);
 
   const handleGoogleCallbackUrl = useCallback(async (value: string): Promise<boolean> => {
     let callback;
@@ -181,6 +209,22 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
       return true;
     }
     clearPendingGoogleLogin();
+    if (pending.mode === "link") {
+      setGoogleStatus("idle");
+      const token = sessionRef.current?.access_token;
+      if (callback.kind === "error" || !token) {
+        setNotice({ kind: "error", text: callback.kind === "error" && callback.errorCode === "access_denied" ? "Google連携がキャンセルされました。" : "Google連携を完了できませんでした。もう一度お試しください。" });
+        return true;
+      }
+      try {
+        const linked = await api.linkGoogleIdentity({ exchange_code: callback.exchangeCode, code_verifier: pending.verifier }, token);
+        setState((current) => ({ ...current, user: linked }));
+        setNotice({ kind: "success", text: "Googleアカウントを連携しました。" });
+      } catch (error) {
+        setNotice({ kind: "error", text: messageForError(error) });
+      }
+      return true;
+    }
     if (callback.kind === "error") {
       setGoogleStatus("idle");
       const message = callback.errorCode === "access_denied"
@@ -205,6 +249,87 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
     return true;
   }, [acceptSession, api, clearPendingGoogleLogin]);
 
+  const registerWithPassword = useCallback(async (request: RegisterPasswordRequest) => {
+    setState({ status: "checking", user: null, error: null, session: null });
+    try {
+      await acceptSession(await api.registerWithPassword(request));
+    } catch (error) {
+      setState({ status: "unauthenticated", user: null, error: messageForError(error), session: null });
+      throw error;
+    }
+  }, [acceptSession, api]);
+
+  const requestPasswordReset = useCallback((email: string) => api.requestPasswordReset({ email }), [api]);
+
+  const verifyEmail = useCallback(async (token: string) => {
+    try {
+      await api.verifyEmail({ token });
+      const access = sessionRef.current?.access_token;
+      if (access) {
+        const user = await api.getCurrentUser(access);
+        setState((current) => ({ ...current, user }));
+      }
+      setNotice({ kind: "success", text: "メールアドレスを確認しました。" });
+    } catch (error) {
+      setNotice({ kind: "error", text: messageForError(error) });
+      throw error;
+    }
+  }, [api]);
+
+  const requestEmailVerification = useCallback(async () => {
+    const access = sessionRef.current?.access_token;
+    if (!access) throw new Error("ログインしていません。");
+    try {
+      await api.requestEmailVerification(access);
+      setNotice({ kind: "success", text: "確認メールを送信しました。届いたコードを入力してください。" });
+    } catch (error) {
+      setNotice({ kind: "error", text: messageForError(error) });
+      throw error;
+    }
+  }, [api]);
+
+  const unlinkAuthenticationMethod = useCallback(async (method: AuthenticationMethod) => {
+    const access = sessionRef.current?.access_token;
+    if (!access) throw new Error("ログインしていません。");
+    try {
+      await api.unlinkAuthenticationMethod(method, access);
+      const user = await api.getCurrentUser(access);
+      setState((current) => ({ ...current, user }));
+      setNotice({ kind: "success", text: method === "GOOGLE" ? "Google連携を解除しました。" : "パスワードでのログインを解除しました。" });
+    } catch (error) {
+      setNotice({ kind: "error", text: messageForError(error) });
+      throw error;
+    }
+  }, [api]);
+
+  // A successful reset ends every session on the server, so the local one is dropped too.
+  const resetPassword = useCallback(async (token: string, newPassword: string) => {
+    await api.resetPassword({ token, new_password: newPassword });
+    try {
+      await vault.clear();
+    } catch {
+      // The refresh token is already revoked on the server, so a leftover copy is harmless.
+    }
+    clearPendingGoogleLogin();
+    setResetToken(null);
+    setState({ status: "unauthenticated", user: null, error: null, session: null });
+    setNotice({ kind: "success", text: "パスワードを再設定しました。新しいパスワードでログインしてください。" });
+  }, [api, clearPendingGoogleLogin, vault]);
+
+  const handleAccountLinkUrl = useCallback(async (value: string): Promise<boolean> => {
+    let link;
+    try {
+      link = parseAccountDeepLink(value);
+    } catch (error) {
+      setNotice({ kind: "error", text: messageForError(error) });
+      return true;
+    }
+    if (!link) return false;
+    if (link.kind === "reset-password") setResetToken(link.token);
+    else void verifyEmail(link.token).catch(() => undefined);
+    return true;
+  }, [verifyEmail]);
+
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let disposed = false;
@@ -213,6 +338,7 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
       void (async () => {
         for (const url of urls) {
           if (await handleGoogleCallbackUrl(url)) break;
+          if (await handleAccountLinkUrl(url)) break;
         }
       })();
     }).then((nextUnlisten) => {
@@ -225,7 +351,7 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
       disposed = true;
       unlisten?.();
     };
-  }, [handleGoogleCallbackUrl]);
+  }, [handleAccountLinkUrl, handleGoogleCallbackUrl]);
 
   const logout = useCallback(async () => {
     clearPendingGoogleLogin();
@@ -257,14 +383,25 @@ export function AuthProvider({ children, api: suppliedApi, vault: suppliedVault 
     status: state.status,
     user: state.user,
     error: state.error,
+    notice,
+    clearNotice: () => setNotice(null),
+    resetToken,
+    clearResetToken: () => setResetToken(null),
     accessToken: state.session?.access_token ?? null,
     googleStatus,
     loginWithPassword,
+    registerWithPassword,
+    requestPasswordReset,
+    resetPassword,
+    verifyEmail,
+    requestEmailVerification,
+    linkGoogle,
+    unlinkAuthenticationMethod,
     loginWithGoogle,
     logout,
     retrySession: restoreSession,
     enterDemo,
-  }), [enterDemo, googleStatus, loginWithGoogle, loginWithPassword, logout, restoreSession, state.error, state.session?.access_token, state.status, state.user]);
+  }), [enterDemo, googleStatus, linkGoogle, loginWithGoogle, loginWithPassword, logout, notice, registerWithPassword, requestEmailVerification, requestPasswordReset, resetPassword, resetToken, restoreSession, state.error, state.session?.access_token, state.status, state.user, unlinkAuthenticationMethod, verifyEmail]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

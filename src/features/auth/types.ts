@@ -6,6 +6,23 @@ export type LogoutRequest = components["schemas"]["LogoutRequest"];
 export type GoogleAuthorizationRequest = components["schemas"]["GoogleAuthorizationRequest"];
 export type GoogleAuthorizationResponse = components["schemas"]["GoogleAuthorizationResponse"];
 export type GoogleExchangeRequest = components["schemas"]["GoogleExchangeRequest"];
+export type RegisterPasswordRequest = components["schemas"]["RegisterPasswordRequest"];
+export type VerifyEmailRequest = components["schemas"]["VerifyEmailRequest"];
+export type RequestPasswordResetRequest = components["schemas"]["RequestPasswordResetRequest"];
+export type ResetPasswordRequest = components["schemas"]["ResetPasswordRequest"];
+export type AuthenticationMethod = components["schemas"]["AuthenticationMethod"];
+export type CreateGuildRequest = components["schemas"]["CreateGuildRequest"];
+export type UpdateGuildRequest = components["schemas"]["UpdateGuildRequest"];
+export type CreateChannelRequest = components["schemas"]["CreateChannelRequest"];
+export type UpdateChannelRequest = components["schemas"]["UpdateChannelRequest"];
+export type CreateThreadRequest = components["schemas"]["CreateThreadRequest"];
+export type CreateDirectChannelRequest = components["schemas"]["CreateDirectChannelRequest"];
+export type Invite = components["schemas"]["Invite"];
+export type InviteList = components["schemas"]["InviteList"];
+export type CreateInviteRequest = components["schemas"]["CreateInviteRequest"];
+export type UpdateGuildMemberRequest = components["schemas"]["UpdateGuildMemberRequest"];
+export type CreateRoleRequest = components["schemas"]["CreateRoleRequest"];
+export type UpdateRoleRequest = components["schemas"]["UpdateRoleRequest"];
 export type SessionTokenResponse = components["schemas"]["SessionTokenResponse"];
 export type UserSelf = components["schemas"]["UserSelf"];
 export type ApiErrorBody = components["schemas"]["Error"];
@@ -43,13 +60,28 @@ export type MessageSearchResult = components["schemas"]["MessageSearchResult"];
 export type AuthStatus = "checking" | "authenticated" | "unauthenticated";
 export type GoogleAuthStatus = "idle" | "opening" | "waiting" | "exchanging";
 
+export type AuthNotice = { kind: "success" | "error"; text: string };
+
 export type AuthContextValue = {
   status: AuthStatus;
   user: UserSelf | null;
   error: string | null;
+  /** Result of the last account action (verification, link, reset), shown outside the login error slot. */
+  notice: AuthNotice | null;
+  clearNotice: () => void;
+  /** Token from a password reset email link, waiting for the user to choose a new password. */
+  resetToken: string | null;
+  clearResetToken: () => void;
   accessToken: string | null;
   googleStatus: GoogleAuthStatus;
   loginWithPassword: (request: LoginPasswordRequest) => Promise<void>;
+  registerWithPassword: (request: RegisterPasswordRequest) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
+  verifyEmail: (token: string) => Promise<void>;
+  requestEmailVerification: () => Promise<void>;
+  linkGoogle: () => Promise<void>;
+  unlinkAuthenticationMethod: (method: AuthenticationMethod) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   retrySession: () => Promise<void>;

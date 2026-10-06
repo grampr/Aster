@@ -1,5 +1,6 @@
 import type { VoiceSession } from "../auth/types";
 import type RealtimeKitClient from "@cloudflare/realtimekit";
+import type { Participant, RemoteTrack, Room, TrackPublication } from "livekit-client";
 import type { RTKParticipant } from "@cloudflare/realtimekit";
 
 export type VoiceMediaSurface = {
@@ -282,7 +283,150 @@ export class RealtimeKitVoiceMediaSession extends ObservableVoiceSession {
   }
 }
 
+type LiveKitModule = typeof import("livekit-client");
+
+/** Connects to a LiveKit server with the short-lived token issued by Aster Server. */
+export class LiveKitVoiceMediaSession extends ObservableVoiceSession {
+  private room: Room | null = null;
+  private lk: LiveKitModule | null = null;
+  private readonly audioElements = new Map<string, HTMLMediaElement>();
+  private readonly cleanups: Array<() => void> = [];
+
+  constructor(
+    private readonly endpoint: string,
+    private readonly credential: string,
+    private readonly loadModule: () => Promise<LiveKitModule> = () => import("livekit-client"),
+  ) {
+    super();
+  }
+
+  async connect(initialMute: boolean, initialDeaf: boolean): Promise<void> {
+    const lk = await this.loadModule();
+    this.lk = lk;
+    const room = new lk.Room({ adaptiveStream: true, dynacast: true });
+    this.room = room;
+    this.observe(room, lk);
+    await room.connect(this.endpoint, this.credential);
+    try {
+      await room.startAudio();
+    } catch {
+      // Browser autoplay policy can require a later user gesture; joining itself remains valid.
+    }
+    this.state = { ...this.state, deafened: initialDeaf };
+    if (!initialMute) await room.localParticipant.setMicrophoneEnabled(true);
+    this.refresh();
+  }
+
+  async setMuted(value: boolean): Promise<void> {
+    await this.requireRoom().localParticipant.setMicrophoneEnabled(!value);
+    this.refresh();
+  }
+
+  async setDeafened(value: boolean): Promise<void> {
+    for (const element of this.audioElements.values()) element.muted = value;
+    this.emit({ deafened: value });
+  }
+
+  async setVideo(value: boolean): Promise<void> {
+    await this.requireRoom().localParticipant.setCameraEnabled(value);
+    this.refresh();
+  }
+
+  async setScreenShare(value: boolean): Promise<void> {
+    await this.requireRoom().localParticipant.setScreenShareEnabled(value, value ? { audio: true } : undefined);
+    this.refresh();
+  }
+
+  async disconnect(): Promise<void> {
+    for (const cleanup of this.cleanups.splice(0)) cleanup();
+    this.releaseAudio();
+    const room = this.room;
+    this.room = null;
+    if (room) await room.disconnect();
+    this.emit({ muted: true, deafened: false, video: false, screenShare: false, surfaces: [] });
+  }
+
+  private observe(room: Room, lk: LiveKitModule): void {
+    const refresh = () => this.refresh();
+    const subscribed = (track: RemoteTrack) => {
+      if (track.kind !== lk.Track.Kind.Audio) return refresh();
+      const element = track.attach();
+      element.muted = this.state.deafened;
+      element.style.display = "none";
+      document.body.appendChild(element);
+      this.audioElements.set(track.sid ?? track.mediaStreamTrack.id, element);
+      refresh();
+    };
+    const unsubscribed = (track: RemoteTrack) => {
+      const key = track.sid ?? track.mediaStreamTrack.id;
+      for (const element of track.detach()) element.remove();
+      this.audioElements.delete(key);
+      refresh();
+    };
+    const closed = () => {
+      this.releaseAudio();
+      this.emit({ muted: true, video: false, screenShare: false, surfaces: [] });
+    };
+    const events: Array<[string, (...args: never[]) => void]> = [
+      [lk.RoomEvent.ParticipantConnected, refresh],
+      [lk.RoomEvent.ParticipantDisconnected, refresh],
+      [lk.RoomEvent.TrackSubscribed, subscribed],
+      [lk.RoomEvent.TrackUnsubscribed, unsubscribed],
+      [lk.RoomEvent.LocalTrackPublished, refresh],
+      [lk.RoomEvent.LocalTrackUnpublished, refresh],
+      [lk.RoomEvent.TrackMuted, refresh],
+      [lk.RoomEvent.TrackUnmuted, refresh],
+      [lk.RoomEvent.Disconnected, closed],
+    ];
+    for (const [name, handler] of events) {
+      room.on(name as never, handler as never);
+      this.cleanups.push(() => room.off(name as never, handler as never));
+    }
+  }
+
+  private releaseAudio(): void {
+    for (const element of this.audioElements.values()) element.remove();
+    this.audioElements.clear();
+  }
+
+  private refresh(): void {
+    const room = this.room;
+    const lk = this.lk;
+    if (!room || !lk) return;
+    const local = room.localParticipant;
+    const surfaces: VoiceMediaSurface[] = [];
+    this.addSurfaces(surfaces, local, lk, true);
+    for (const participant of room.remoteParticipants.values()) this.addSurfaces(surfaces, participant, lk, false);
+    this.emit({
+      muted: !local.isMicrophoneEnabled,
+      video: local.isCameraEnabled,
+      screenShare: local.isScreenShareEnabled,
+      surfaces,
+    });
+  }
+
+  private addSurfaces(surfaces: VoiceMediaSurface[], participant: Participant, lk: LiveKitModule, local: boolean): void {
+    const name = participant.name || participant.identity;
+    const publications: TrackPublication[] = [...participant.trackPublications.values()];
+    for (const publication of publications) {
+      const track = publication.track?.mediaStreamTrack;
+      if (!track || publication.isMuted || publication.kind !== lk.Track.Kind.Video) continue;
+      if (publication.source === lk.Track.Source.ScreenShare) {
+        surfaces.push({ id: `${participant.identity}:screen`, name: local ? "あなたの画面" : `${name}の画面`, kind: "screen", stream: new MediaStream([track]), local });
+      } else if (publication.source === lk.Track.Source.Camera) {
+        surfaces.push({ id: `${participant.identity}:camera`, name: local ? "あなた" : name, kind: "camera", stream: new MediaStream([track]), local });
+      }
+    }
+  }
+
+  private requireRoom(): Room {
+    if (!this.room) throw new Error("Voice Sessionへ接続していません。");
+    return this.room;
+  }
+}
+
 export function createVoiceMediaSession(session: VoiceSession): VoiceMediaSession {
+  if (session.provider === "livekit") return new LiveKitVoiceMediaSession(session.endpoint, session.credential);
   if (session.provider === "aster-local") return new LocalVoiceMediaSession();
   if (session.provider === "cloudflare-realtimekit") return new RealtimeKitVoiceMediaSession(session.credential);
   throw new Error(`未対応のVoice Providerです: ${session.provider}`);

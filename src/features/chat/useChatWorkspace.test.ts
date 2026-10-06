@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../auth/types";
-import { applyGatewayEvent, applyMessageDelete, applyMessageUpdate, applyReactionSummary, upsertTypingUser } from "./useChatWorkspace";
+import { applyGatewayEvent, applyMessageDelete, applyMessageUpdate, applyReactionSummary, latestMessageOf, upsertTypingUser } from "./useChatWorkspace";
 
 const source: Message = {
   id: "message-1",
@@ -114,5 +114,13 @@ describe("message reaction state", () => {
       d: { message_id: source.id, channel_id: source.channel_id, user_id: "user-1", emoji: "👍", count: 0 },
     }, "user-1");
     expect(messages[0].reactions).toEqual([]);
+  });
+});
+
+describe("latestMessageOf", () => {
+  it("only offers a message that belongs to the channel being marked as read", () => {
+    expect(latestMessageOf([source, reply], "channel-1")?.id).toBe("message-2");
+    expect(latestMessageOf([source], "channel-2")).toBeUndefined();
+    expect(latestMessageOf([], "channel-1")).toBeUndefined();
   });
 });

@@ -1,5 +1,26 @@
 import type {
   ApiErrorBody,
+  AuthenticationMethod,
+  CreateChannelRequest,
+  CreateDirectChannelRequest,
+  CreateGuildRequest,
+  CreateInviteRequest,
+  CreateRoleRequest,
+  CreateThreadRequest,
+  Channel,
+  Guild,
+  GuildMember,
+  Invite,
+  InviteList,
+  RegisterPasswordRequest,
+  RequestPasswordResetRequest,
+  ResetPasswordRequest,
+  Role,
+  UpdateChannelRequest,
+  UpdateGuildMemberRequest,
+  UpdateGuildRequest,
+  UpdateRoleRequest,
+  VerifyEmailRequest,
   Attachment,
   AttachmentDownloadIntent,
   AttachmentUploadIntent,
@@ -85,11 +106,116 @@ export class AsterApiClient {
     });
   }
 
-  beginGoogleAuthorization(request: GoogleAuthorizationRequest): Promise<GoogleAuthorizationResponse> {
+  registerWithPassword(request: RegisterPasswordRequest): Promise<SessionTokenResponse> {
+    return this.request("/auth/password/register", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  /** Pass an access token to start a link attempt for the signed-in account instead of a login. */
+  beginGoogleAuthorization(request: GoogleAuthorizationRequest, accessToken?: string): Promise<GoogleAuthorizationResponse> {
     return this.request("/auth/google/authorize", {
       method: "POST",
       body: JSON.stringify(request),
-    });
+    }, accessToken);
+  }
+
+  linkGoogleIdentity(request: GoogleExchangeRequest, accessToken: string): Promise<UserSelf> {
+    return this.request("/auth/google/link", { method: "POST", body: JSON.stringify(request) }, accessToken);
+  }
+
+  async unlinkAuthenticationMethod(method: AuthenticationMethod, accessToken: string): Promise<void> {
+    await this.request<void>(`/users/@me/authentication-methods/${encodeURIComponent(method)}`, { method: "DELETE" }, accessToken);
+  }
+
+  async requestEmailVerification(accessToken: string): Promise<void> {
+    await this.request<void>("/auth/email/verification", { method: "POST" }, accessToken);
+  }
+
+  async verifyEmail(request: VerifyEmailRequest): Promise<void> {
+    await this.request<void>("/auth/email/verify", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  async requestPasswordReset(request: RequestPasswordResetRequest): Promise<void> {
+    await this.request<void>("/auth/password/reset-request", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  async resetPassword(request: ResetPasswordRequest): Promise<void> {
+    await this.request<void>("/auth/password/reset", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  createGuild(body: CreateGuildRequest, accessToken: string): Promise<Guild> {
+    return this.request("/guilds", { method: "POST", body: JSON.stringify(body) }, accessToken);
+  }
+
+  updateGuild(guildId: string, body: UpdateGuildRequest, accessToken: string): Promise<Guild> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}`, { method: "PATCH", body: JSON.stringify(body) }, accessToken);
+  }
+
+  async deleteGuild(guildId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/guilds/${encodeURIComponent(guildId)}`, { method: "DELETE" }, accessToken);
+  }
+
+  createGuildChannel(guildId: string, body: CreateChannelRequest, accessToken: string): Promise<Channel> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/channels`, { method: "POST", body: JSON.stringify(body) }, accessToken);
+  }
+
+  updateChannel(channelId: string, body: UpdateChannelRequest, accessToken: string): Promise<Channel> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}`, { method: "PATCH", body: JSON.stringify(body) }, accessToken);
+  }
+
+  async deleteChannel(channelId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/channels/${encodeURIComponent(channelId)}`, { method: "DELETE" }, accessToken);
+  }
+
+  createChannelThread(channelId: string, body: CreateThreadRequest, accessToken: string): Promise<Channel> {
+    return this.request(`/channels/${encodeURIComponent(channelId)}/threads`, { method: "POST", body: JSON.stringify(body) }, accessToken);
+  }
+
+  openDirectChannel(body: CreateDirectChannelRequest, accessToken: string): Promise<Channel> {
+    return this.request("/users/@me/channels", { method: "POST", body: JSON.stringify(body) }, accessToken);
+  }
+
+  getInvite(code: string, accessToken: string): Promise<Invite> {
+    return this.request(`/invites/${encodeURIComponent(code)}`, { method: "GET" }, accessToken);
+  }
+
+  acceptInvite(code: string, accessToken: string): Promise<GuildMember> {
+    return this.request(`/invites/${encodeURIComponent(code)}/accept`, { method: "POST" }, accessToken);
+  }
+
+  createGuildInvite(guildId: string, body: CreateInviteRequest, accessToken: string): Promise<Invite> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/invites`, { method: "POST", body: JSON.stringify(body) }, accessToken);
+  }
+
+  listGuildInvites(guildId: string, accessToken: string): Promise<InviteList> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/invites`, { method: "GET" }, accessToken);
+  }
+
+  async deleteGuildInvite(guildId: string, inviteId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/guilds/${encodeURIComponent(guildId)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE" }, accessToken);
+  }
+
+  updateGuildMember(guildId: string, userId: string, body: UpdateGuildMemberRequest, accessToken: string): Promise<GuildMember> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}`, { method: "PATCH", body: JSON.stringify(body) }, accessToken);
+  }
+
+  async removeGuildMember(guildId: string, userId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/guilds/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" }, accessToken);
+  }
+
+  async leaveGuild(guildId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/guilds/${encodeURIComponent(guildId)}/members/@me`, { method: "DELETE" }, accessToken);
+  }
+
+  createGuildRole(guildId: string, body: CreateRoleRequest, accessToken: string): Promise<Role> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/roles`, { method: "POST", body: JSON.stringify(body) }, accessToken);
+  }
+
+  updateGuildRole(guildId: string, roleId: string, body: UpdateRoleRequest, accessToken: string): Promise<Role> {
+    return this.request(`/guilds/${encodeURIComponent(guildId)}/roles/${encodeURIComponent(roleId)}`, { method: "PATCH", body: JSON.stringify(body) }, accessToken);
+  }
+
+  async deleteGuildRole(guildId: string, roleId: string, accessToken: string): Promise<void> {
+    await this.request<void>(`/guilds/${encodeURIComponent(guildId)}/roles/${encodeURIComponent(roleId)}`, { method: "DELETE" }, accessToken);
   }
 
   exchangeGoogleAuthorization(request: GoogleExchangeRequest): Promise<SessionTokenResponse> {
@@ -307,8 +433,11 @@ export class AsterApiClient {
       );
     }
 
+    // 204 and bodiless 202 answers (such as a password reset request) carry no JSON.
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    if (text === "") return undefined as T;
+    return JSON.parse(text) as T;
   }
 }
 
