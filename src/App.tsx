@@ -17,6 +17,8 @@ import { NoticeBar } from "./features/account/NoticeBar";
 import { AuthGate } from "./features/auth/AuthGate";
 import { AddGuildDialog, GuildSettingsDialog } from "./features/guild/GuildDialogs";
 import { MemberDialog, SearchDialog, ThreadDialog } from "./features/guild/MemberAndSearchDialogs";
+import { RolesDialog } from "./features/guild/RolesDialog";
+import { highestRolePosition } from "./features/chat/permissions";
 import { AuthProvider, useAuth } from "./features/auth/AuthProvider";
 import {
   accentOptions, defaultAppearancePreferences, fontOptions, loadAppearancePreferences, parseAppearancePreferences,
@@ -883,6 +885,7 @@ function DesktopWorkspace() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [addGuildOpen, setAddGuildOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [rolesOpen, setRolesOpen] = useState(false);
   const [memberDialogId, setMemberDialogId] = useState<string | null>(null);
   const [threadSource, setThreadSource] = useState<{ id: string; suggestion: string } | null>(null);
   const [guildSettingsOpen, setGuildSettingsOpen] = useState(false);
@@ -1188,12 +1191,28 @@ function DesktopWorkspace() {
         ) : null;
       })()}
       {addGuildOpen && <AddGuildDialog onCreate={workspace.createGuild} onJoin={workspace.joinGuild} onClose={() => setAddGuildOpen(false)} />}
+      {rolesOpen && (() => {
+        const guild = workspace.guilds.find((item) => item.id === workspace.activeGuildId);
+        const me = workspace.members.find((member) => member.user.id === user?.id);
+        return (
+          <RolesDialog
+            roles={workspace.roles}
+            viewerPermissions={workspace.permissions}
+            topPosition={highestRolePosition(guild, me, workspace.roles)}
+            onCreate={workspace.createRole}
+            onUpdate={workspace.updateRole}
+            onDelete={workspace.deleteRole}
+            onClose={() => setRolesOpen(false)}
+          />
+        );
+      })()}
       {guildSettingsOpen && (
         <GuildSettingsDialog
           guildName={guildName}
           permissions={workspace.permissions}
           isOwner={workspace.guilds.find((guild) => guild.id === workspace.activeGuildId)?.owner_id === user?.id}
           categories={workspace.channels.filter((channel) => channel.type === "CATEGORY")}
+          onManageRoles={() => { setGuildSettingsOpen(false); setRolesOpen(true); }}
           onCreateChannel={workspace.createChannel}
           onCreateInvite={workspace.createInvite}
           onListInvites={workspace.listInvites}

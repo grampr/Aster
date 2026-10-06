@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { GatewayGuildMember, GatewayPresence, GatewayUserSummary, GatewayVoiceState } from "../../generated/aster-gateway";
 import { AsterApiClient, AsterApiError, AsterNetworkError } from "../auth/api";
-import type { Attachment, Channel, CreateChannelRequest, CreateInviteRequest, Guild, GuildMember, Invite, Message, MessageReaction, MessageSearchResult, ReadState, Role, UpdateGuildMemberRequest, VoiceSession, VoiceState } from "../auth/types";
+import type { Attachment, Channel, CreateChannelRequest, CreateInviteRequest, Guild, GuildMember, Invite, Message, MessageReaction, MessageSearchResult, ReadState, Role, UpdateGuildMemberRequest, UpdateRoleRequest, CreateRoleRequest, VoiceSession, VoiceState } from "../auth/types";
 import { effectivePermissions } from "./permissions";
 import { createVoiceMediaSession, type VoiceMediaSession, type VoiceMediaSnapshot } from "../voice/mediaSession";
 import { AsterGatewayClient, type GatewayStatus, type MessageGatewayEvent, type WorkspaceGatewayEvent } from "./gateway";
@@ -85,6 +85,9 @@ export type ChatWorkspace = {
   leaveGuild: () => Promise<void>;
   createChannel: (request: CreateChannelRequest) => Promise<void>;
   createInvite: (request: CreateInviteRequest) => Promise<Invite>;
+  createRole: (request: CreateRoleRequest) => Promise<Role>;
+  updateRole: (roleId: string, request: UpdateRoleRequest) => Promise<void>;
+  deleteRole: (roleId: string) => Promise<void>;
   createThread: (name: string, messageId?: string) => Promise<void>;
   openDirectChannel: (userId: string) => Promise<void>;
   searchMessages: (query: string, cursor?: string) => Promise<{ items: MessageSearchResult[]; nextCursor: string | null }>;
@@ -131,8 +134,10 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
   const selectedChannelIdRef = useRef<string | null>(null);
   const activeGuildIdRef = useRef<string | null>(null);
   const accessTokenRef = useRef<string | null>(accessToken);
+  const rolesRef = useRef<Role[]>([]);
   const guildsRef = useRef<Guild[]>([]);
   guildsRef.current = guilds;
+  rolesRef.current = roles;
   const voiceAdapterRef = useRef<VoiceMediaSession | null>(null);
   const voiceUnsubscribeRef = useRef<(() => void) | null>(null);
   const typingTimersRef = useRef(new Map<string, ReturnType<typeof globalThis.setTimeout>>());
@@ -168,7 +173,17 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
       return;
     }
     if (event.t === "MEMBER_JOIN" || event.t === "MEMBER_UPDATE") {
-      if (event.d.guild_id === activeGuildIdRef.current) setMembers((current) => upsertMember(current, memberFromGateway(event.d)));
+      if (event.d.guild_id === activeGuildIdRef.current) {
+        setMembers((current) => upsertMember(current, memberFromGateway(event.d)));
+        // The Gateway has no role events, so a role id we do not know means a role was created elsewhere.
+        const known = new Set(rolesRef.current.map((role) => role.id));
+        const token = accessTokenRef.current;
+        if (token && event.d.role_ids.some((id) => !known.has(id))) {
+          void api.listGuildRoles(event.d.guild_id, token).then((list) => {
+            if (activeGuildIdRef.current === event.d.guild_id) setRoles(list.items);
+          }).catch(() => undefined);
+        }
+      }
       return;
     }
     if (event.t === "MEMBER_LEAVE") {
@@ -210,7 +225,7 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     }
     if (event.t === "MESSAGE_CREATE") removeTypingUser(event.d.author.id);
     setMessages((current) => applyGatewayEvent(current, event, currentUserId));
-  }, [currentUserId, removeTypingUser]);
+  }, [api, currentUserId, removeTypingUser]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -686,6 +701,30 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     setMembers((current) => current.filter((member) => member.user.id !== userId));
   }, [api]);
 
+  const createRole = useCallback(async (request: CreateRoleRequest) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) throw new Error("コミュニティを選択してください。");
+    const role = await api.createGuildRole(guildId, request, requireToken());
+    setRoles((current) => sortRoles([...current.filter((item) => item.id !== role.id), role]));
+    return role;
+  }, [api]);
+
+  const updateRole = useCallback(async (roleId: string, request: UpdateRoleRequest) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return;
+    const role = await api.updateGuildRole(guildId, roleId, request, requireToken());
+    setRoles((current) => sortRoles(current.map((item) => item.id === role.id ? role : item)));
+  }, [api]);
+
+  const deleteRole = useCallback(async (roleId: string) => {
+    const guildId = activeGuildIdRef.current;
+    if (!guildId) return;
+    await api.deleteGuildRole(guildId, roleId, requireToken());
+    setRoles((current) => current.filter((item) => item.id !== roleId));
+    // The server unassigns a deleted role from its members.
+    setMembers((current) => current.map((member) => member.role_ids.includes(roleId) ? { ...member, role_ids: member.role_ids.filter((id) => id !== roleId) } : member));
+  }, [api]);
+
   const permissions = useMemo(() => effectivePermissions(
     guilds.find((guild) => guild.id === activeGuildId),
     members.find((member) => member.user.id === currentUserId),
@@ -704,6 +743,7 @@ export function useChatWorkspace(accessToken: string | null, currentUserId: stri
     selectGuild, selectChannel, sendMessage, updateMessage, deleteMessage, toggleReaction, notifyTyping, loadOlderMessages,
     joinVoice, leaveVoice, setVoiceMuted, setVoiceDeafened, setVoiceVideo, setVoiceScreenShare, fetchAttachment, retry,
     createThread, openDirectChannel, searchMessages, updateMember, removeMember,
+    createRole, updateRole, deleteRole,
     permissions, createGuild, joinGuild, leaveGuild, createChannel, createInvite, listInvites, revokeInvite,
   };
 }
@@ -787,6 +827,10 @@ function upsertChannel(channels: Channel[], incoming: Channel): Channel[] {
   const next = channels.filter((channel) => channel.id !== incoming.id);
   next.push(incoming);
   return next.sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
+}
+
+function sortRoles(roles: Role[]): Role[] {
+  return [...roles].sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
 }
 
 function upsertDirectChannel(channels: Channel[], incoming: Channel): Channel[] {
