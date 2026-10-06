@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { X } from "@phosphor-icons/react";
 
 /** A modal dialog that closes on Escape or a click on the backdrop. */
-export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Dialog({ title, onClose, wide = false, children }: { title: string; onClose: () => void; wide?: boolean; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
 
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={panel}>
+      <div className={`dialog${wide ? " dialog--wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={panel}>
         <header>
           <h2>{title}</h2>
           <button type="button" className="icon-button" aria-label="閉じる" onClick={onClose}><X size={20} /></button>

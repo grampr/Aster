@@ -77,12 +77,13 @@ const inviteLifetimes = [
 
 /** Community actions that depend on the user's permissions: invites, channels and leaving. */
 export function GuildSettingsDialog({
-  guildName, permissions, isOwner, categories, onCreateChannel, onCreateInvite, onListInvites, onRevokeInvite, onLeave, onClose,
+  guildName, permissions, isOwner, categories, onManageRoles, onCreateChannel, onCreateInvite, onListInvites, onRevokeInvite, onLeave, onClose,
 }: {
   guildName: string;
   permissions: number;
   isOwner: boolean;
   categories: Channel[];
+  onManageRoles?: () => void;
   onCreateChannel: (request: CreateChannelRequest) => Promise<void>;
   onCreateInvite: (request: CreateInviteRequest) => Promise<Invite>;
   onListInvites: () => Promise<Invite[]>;
@@ -176,6 +177,13 @@ export function GuildSettingsDialog({
               ))}
             </ul>
           )}
+        </>
+      )}
+
+      {onManageRoles && hasPermission(permissions, Permission.MANAGE_ROLES) && (
+        <>
+          <h3>ロール</h3>
+          <div className="dialog-actions"><button type="button" className="dialog-button" onClick={onManageRoles}>ロールを管理…</button></div>
         </>
       )}
 
