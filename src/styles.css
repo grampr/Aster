@@ -58,3 +58,27 @@
 .dialog--wide{width:min(820px,calc(100vw - 32px))}.roles-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:20px;align-items:start}.roles-list .list-rows{max-height:340px;overflow-y:auto;margin-bottom:10px}.roles-list .list-rows li{padding:0}.roles-list .result-row{padding:8px 10px}.result-row.is-selected{background:var(--hover);box-shadow:inset 3px 0 0 var(--accent,#1687f8)}.role-dot{display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:50%}.roles-editor .dialog-check small{color:var(--muted)}.roles-editor input[type=color]{width:42px;min-height:34px;padding:2px}.roles-editor input[type=number]{max-width:120px}@media(max-width:700px){.roles-layout{grid-template-columns:1fr}}
 
 .roles-list .list-rows li[draggable=true]{cursor:grab}.roles-list .list-rows li.is-drop-target{box-shadow:inset 0 2px 0 var(--accent,#1687f8)}.roles-hint{margin:0 0 6px;color:var(--muted);font-size:12px}
+
+/* Refinement pass: tighter chrome and smaller artwork so the app reads as a dense tool, not a mock-up. */
+.app-shell{grid-template-columns:56px var(--channel-width) 1px minmax(430px,1fr) 1px var(--member-width)}
+.app-shell svg{transform:scale(calc(var(--icon-scale,1) * .8))}
+.guild-list{gap:8px;padding:10px 8px 12px}.guild-button,.guild-add{width:38px;height:38px}.guild-button img{width:100%;height:100%}.guild-add svg{width:18px;height:18px}
+.channel-panel{grid-template-rows:48px minmax(0,1fr) auto}.chat-panel{grid-template-rows:48px minmax(0,1fr) 16px auto}.member-panel{grid-template-rows:48px auto minmax(0,1fr)}
+.panel-title{height:48px}.channel-panel__title{padding:0 14px}.member-title{padding:0 12px}.chat-header{padding-inline:12px;gap:8px}
+.icon-button{width:28px;height:28px;border-radius:6px}.icon-button:hover{background:var(--hover)}
+.guild-title,.channel-heading{font-size:calc(14px + var(--font-size-delta,0px))}
+.channel-row{min-height:30px;padding-block:0;font-size:calc(13px + var(--font-size-delta,0px))}.channel-row.is-thread{min-height:26px;font-size:calc(12px + var(--font-size-delta,0px))}
+.category-label{margin:8px 0 1px;padding:0 14px;font-size:calc(10px + var(--font-size-delta,0px))}
+.channel-panel .search-box,.channel-search{min-height:30px}
+.message-scroll{padding-inline:14px}.message-group{grid-template-columns:36px minmax(0,1fr);gap:10px;padding:8px 0 12px}.avatar--large{width:36px;height:36px}
+.message-meta strong{font-size:calc(13px + var(--font-size-delta,0px))}.message-meta time{font-size:calc(11px + var(--font-size-delta,0px))}
+.message-content p{margin:1px 0;font-size:calc(13px + var(--font-size-delta,0px));line-height:1.6}
+.date-divider{padding:8px 0 10px;font-size:calc(11px + var(--font-size-delta,0px))}
+.member-row strong{font-size:calc(13px + var(--font-size-delta,0px))}.member-row small,.member-group h2{font-size:calc(11px + var(--font-size-delta,0px))}
+.avatar--medium{width:32px;height:32px}.avatar--small{width:22px;height:22px}
+.composer textarea{min-height:44px;padding-top:12px;font-size:calc(13px + var(--font-size-delta,0px))}
+.dialog{padding:16px 18px}.dialog-field input,.dialog-field select,.dialog-field textarea{min-height:32px}.dialog-button{min-height:30px;padding:0 12px;font-size:calc(12px + var(--font-size-delta,0px))}
+.dialog p,.dialog-check,.list-rows li{font-size:calc(12px + var(--font-size-delta,0px))}.list-rows li{padding:6px 8px}
+.appearance-popover{padding:14px}.toggle-row{margin-bottom:16px}
+.search-field{height:30px;border-radius:6px;font-size:calc(12px + var(--font-size-delta,0px))}.channel-search{margin-bottom:10px}.member-search-row{grid-template-columns:minmax(0,1fr) 28px;padding:8px 12px 6px}
+.channel-panel__body,.channel-scroll{padding-inline:8px}
