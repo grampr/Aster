@@ -66,6 +66,26 @@ export function canEditRole(role: Role, topPosition: number): boolean {
   return !role.managed && role.position < topPosition;
 }
 
+/**
+ * Position updates that move one editable role to `targetIndex` among the viewer's editable
+ * roles (listed highest first). The editable roles are renumbered n..1 so the result is
+ * unambiguous, and only roles whose position changes are returned.
+ */
+export function reorderRoles(roles: Role[], topPosition: number, roleId: string, targetIndex: number): { id: string; position: number }[] {
+  const editable = roles.filter((role) => canEditRole(role, topPosition)).sort((left, right) => right.position - left.position || left.id.localeCompare(right.id));
+  const from = editable.findIndex((role) => role.id === roleId);
+  if (from < 0 || targetIndex < 0 || targetIndex >= editable.length) return [];
+  // Non-owners can only place roles strictly below their own top role.
+  if (Number.isFinite(topPosition) && editable.length > topPosition - 1) return [];
+  const order = [...editable];
+  const [moved] = order.splice(from, 1);
+  order.splice(targetIndex, 0, moved);
+  return order.flatMap((role, index) => {
+    const position = order.length - index;
+    return role.position === position ? [] : [{ id: role.id, position }];
+  });
+}
+
 export type RoleDraft = { name: string; color: string | null; permissions: number };
 
 /** The smallest update request that turns a role into the draft, or null when nothing changed. */

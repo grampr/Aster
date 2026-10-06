@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { CreateRoleRequest, Role, UpdateRoleRequest } from "../auth/types";
-import { buildRolePatch, canEditRole, hasPermission, permissionOptions } from "../chat/permissions";
+import { buildRolePatch, canEditRole, hasPermission, permissionOptions, reorderRoles } from "../chat/permissions";
 import { describeWorkspaceError } from "../chat/useChatWorkspace";
 import { Dialog } from "../ui/Dialog";
 
@@ -27,6 +27,8 @@ export function RolesDialog({ roles, viewerPermissions, topPosition, onCreate, o
   const [permissions, setPermissions] = useState(0);
   const [position, setPosition] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +77,17 @@ export function RolesDialog({ roles, viewerPermissions, topPosition, onCreate, o
     });
   };
 
+  const editableIds = ordered.filter((role) => canEditRole(role, topPosition)).map((role) => role.id);
+
+  // Moves a role to the slot another editable role occupies; the server checks each position change.
+  const moveRole = (roleId: string, targetIndex: number) => {
+    const updates = reorderRoles(roles, topPosition, roleId, targetIndex);
+    if (updates.length === 0) return;
+    void attempt(async () => {
+      for (const update of updates) await onUpdate(update.id, { position: update.position });
+    });
+  };
+
   const toggle = (bit: number, on: boolean) => setPermissions((current) => on ? current | bit : current & ~bit);
 
   return (
@@ -83,7 +96,21 @@ export function RolesDialog({ roles, viewerPermissions, topPosition, onCreate, o
         <div className="roles-list">
           <ul className="list-rows" aria-label="ロール一覧">
             {ordered.map((role) => (
-              <li key={role.id}>
+              <li
+                key={role.id}
+                data-role-id={role.id}
+                className={role.id === overId && role.id !== dragId ? "is-drop-target" : undefined}
+                draggable={!busy && editableIds.includes(role.id)}
+                onDragStart={(event) => { setDragId(role.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", role.id); }}
+                onDragOver={(event) => { if (dragId && editableIds.includes(role.id)) { event.preventDefault(); setOverId(role.id); } }}
+                onDragEnd={() => { setDragId(null); setOverId(null); }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (dragId) moveRole(dragId, editableIds.indexOf(role.id));
+                  setDragId(null);
+                  setOverId(null);
+                }}
+              >
                 <button type="button" className={`result-row ${role.id === selectedId ? "is-selected" : ""}`} onClick={() => setSelectedId(role.id)}>
                   <strong><span className="role-dot" style={{ background: role.color ?? "#9aa8b2" }} />{role.name}</strong>
                   <small>{role.managed ? "全員に適用" : canEditRole(role, topPosition) ? `階層 ${role.position}` : `階層 ${role.position}・編集不可`}</small>
@@ -91,6 +118,13 @@ export function RolesDialog({ roles, viewerPermissions, topPosition, onCreate, o
               </li>
             ))}
           </ul>
+          {editableIds.length > 1 && <p className="roles-hint">ドラッグで並べ替え（上ほど上位）</p>}
+          {selected && editableIds.includes(selected.id) && editableIds.length > 1 && (
+            <div className="dialog-actions">
+              <button type="button" className="dialog-button" disabled={busy || editableIds[0] === selected.id} onClick={() => moveRole(selected.id, editableIds.indexOf(selected.id) - 1)}>上へ</button>
+              <button type="button" className="dialog-button" disabled={busy || editableIds.at(-1) === selected.id} onClick={() => moveRole(selected.id, editableIds.indexOf(selected.id) + 1)}>下へ</button>
+            </div>
+          )}
           <form onSubmit={create}>
             <label className="dialog-field"><span>新しいロール</span>
               <input value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={100} placeholder="モデレーター" />

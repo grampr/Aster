@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRolePatch, canEditRole, effectivePermissions, hasPermission, highestRolePosition, Permission } from "./permissions";
+import { buildRolePatch, canEditRole, effectivePermissions, hasPermission, highestRolePosition, Permission, reorderRoles } from "./permissions";
 import type { Guild, GuildMember, Role } from "../auth/types";
 
 const guild = { id: "g", owner_id: "owner" } as Guild;
@@ -61,5 +61,24 @@ describe("role editing helpers", () => {
     const managed = role("everyone", Permission.SEND_MESSAGES, 0, true);
     expect(buildRolePatch(managed, { name: "renamed", color: "#000000", permissions: managed.permissions })).toBeNull();
     expect(buildRolePatch(managed, { name: "renamed", color: "#000000", permissions: 0 })).toEqual({ permissions: 0 });
+  });
+});
+
+describe("reorderRoles", () => {
+  const roles = [role("everyone", 1, 0, true), role("a", 1, 1), role("b", 1, 2), role("c", 1, 3), role("boss", 1, 4)];
+
+  it("moves a role and renumbers only the roles that changed", () => {
+    // Editable below position 4, highest first: c(3) b(2) a(1). Move a to the top.
+    expect(reorderRoles(roles, 4, "a", 0)).toEqual([{ id: "a", position: 3 }, { id: "c", position: 2 }, { id: "b", position: 1 }]);
+  });
+
+  it("returns nothing when the order does not change or the role is not editable", () => {
+    expect(reorderRoles(roles, 4, "c", 0)).toEqual([]);
+    expect(reorderRoles(roles, 4, "boss", 0)).toEqual([]);
+    expect(reorderRoles(roles, 4, "a", 9)).toEqual([]);
+  });
+
+  it("lets the owner reorder every non-default role", () => {
+    expect(reorderRoles(roles, Number.POSITIVE_INFINITY, "a", 0)).toEqual([{ id: "a", position: 4 }, { id: "boss", position: 3 }, { id: "c", position: 2 }, { id: "b", position: 1 }]);
   });
 });
