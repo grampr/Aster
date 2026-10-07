@@ -109,6 +109,7 @@ export function LoginScreen() {
       <section className="login-panel">
         <div className="login-form-wrap">
           <header className="login-heading">
+            <img className="login-card-mark" src={assets.logo} alt="Aster" />
             <p>{heading.eyebrow}</p>
             <h2>{heading.title}</h2>
             <span>{heading.lead}</span>

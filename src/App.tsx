@@ -88,6 +88,7 @@ function GuildRail({ guilds, activeGuild, onSelect, onAdd }: { guilds: ViewGuild
             <img src={guild.image} alt="" />
           </button>
         ))}
+        <span className="guild-divider" aria-hidden="true" />
         <button className="guild-add" type="button" aria-label="コミュニティを追加" title="コミュニティを追加" onClick={onAdd} disabled={!onAdd}>
           <Plus size={24} />
         </button>
@@ -132,11 +133,13 @@ function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect,
   const visibleDirect = directChannels.filter((channel) => channel.label.toLowerCase().includes(query.toLowerCase()));
   const voiceChannels = filtered.filter((channel) => channel.kind === "voice");
   const categories = channels.filter((channel) => channel.kind === "category");
-  // Channels outside any category come first, then each category's channels under its name.
-  const groupByCategory = (items: ViewChannel[]) => [
-    { category: null as ViewChannel | null, items: items.filter((channel) => !categories.some((category) => category.id === channel.parentId)) },
-    ...categories.map((category) => ({ category, items: items.filter((channel) => channel.parentId === category.id) })).filter((group) => group.items.length > 0),
-  ].filter((group) => group.items.length > 0);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Text and voice channels share the tree: loose channels first, then each category with its own channels.
+  const listable = [...textChannels, ...voiceChannels];
+  const sections = [
+    { category: null as ViewChannel | null, items: listable.filter((channel) => !categories.some((category) => category.id === channel.parentId)) },
+    ...categories.map((category) => ({ category, items: listable.filter((channel) => channel.parentId === category.id) })),
+  ].filter((section) => section.category !== null ? query === "" || section.items.length > 0 : section.items.length > 0);
 
   const renderVoiceChannel = (channel: ViewChannel) => (
             <div key={channel.id} className={`voice-channel ${channel.id === activeVoiceChannelId ? "is-active" : ""}`}>
@@ -169,7 +172,7 @@ function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect,
       <header className="panel-title channel-panel__title">
         <button className="guild-title" type="button" onClick={onOpenGuildSettings} disabled={!onOpenGuildSettings} aria-label={`${guildName}の設定`}>
           <span>{guildName}</span>
-          <CaretDown size={16} />
+          <CaretDown size={14} weight="bold" />
         </button>
       </header>
 
@@ -180,53 +183,43 @@ function ChannelPanel({ channels, guildName, selectedChannel, loading, onSelect,
           <kbd>⌘K</kbd>
         </label>
 
-        <section className="channel-section">
-          <div className="section-heading">
-            <span>テキストチャンネル</span>
-            <IconButton label="テキストチャンネルを追加" onClick={onOpenGuildSettings}><Plus size={17} /></IconButton>
-          </div>
-          <div className="channel-items">
-            {loading && <p className="panel-inline-state">読み込み中…</p>}
-            {!loading && textChannels.length === 0 && <p className="panel-inline-state">テキストチャンネルはありません</p>}
-            {groupByCategory(textChannels).map((group) => (
-              <div className="channel-group" key={group.category?.id ?? "uncategorized"}>
-                {group.category && <p className="category-label">{group.category.label}</p>}
-                {group.items.map((channel) => (
-                  <button
-                    type="button"
-                    key={channel.id}
-                    className={`channel-row ${selectedChannel === channel.id ? "is-selected" : ""}`}
-                    onClick={() => onSelect(channel.id)}
-                  >
-                    <Hash size={19} weight="bold" />
-                    <span>{channel.label}</span>
-                    {channel.unread && <span className="unread-count">{channel.unread}</span>}
-                  </button>
-                ))}
-                {group.items.flatMap((channel) => threadsOf(channel.id)).map((thread) => (
-                  <button type="button" key={thread.id} className={`channel-row channel-thread is-thread ${selectedChannel === thread.id ? "is-selected" : ""}`} onClick={() => onSelect(thread.id)}>
-                    <ArrowElbowDownRight size={16} />
-                    <span>{thread.label}</span>
-                    {thread.unread && <span className="unread-count">{thread.unread}</span>}
-                  </button>
+        <div className="channel-tree">
+          {loading && <p className="panel-inline-state">読み込み中…</p>}
+          {!loading && listable.length === 0 && categories.length === 0 && <p className="panel-inline-state">チャンネルはありません</p>}
+          {sections.map((section) => {
+            const key = section.category?.id ?? "uncategorized";
+            const isCollapsed = section.category !== null && collapsed.has(key) && query === "";
+            return (
+              <div className="channel-group" key={key}>
+                {section.category && (
+                  <div className="category-heading">
+                    <button type="button" className="category-toggle" aria-expanded={!isCollapsed} onClick={() => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; })}>
+                      <CaretDown size={12} weight="bold" className={isCollapsed ? "is-collapsed" : ""} />
+                      <span>{section.category.label}</span>
+                    </button>
+                    <IconButton label="チャンネルを作成" onClick={onOpenGuildSettings}><Plus size={16} /></IconButton>
+                  </div>
+                )}
+                {(!isCollapsed || section.items.some((channel) => channel.id === selectedChannel)) && section.items.filter((channel) => !isCollapsed || channel.id === selectedChannel).map((channel) => channel.kind === "voice" ? renderVoiceChannel(channel) : (
+                  <div className="channel-entry" key={channel.id}>
+                    <button type="button" className={`channel-row ${selectedChannel === channel.id ? "is-selected" : ""} ${channel.unread ? "is-unread" : ""}`} onClick={() => onSelect(channel.id)}>
+                      <Hash size={19} weight="bold" />
+                      <span>{channel.label}</span>
+                      {channel.unread && <span className="unread-count">{channel.unread}</span>}
+                    </button>
+                    {!isCollapsed && threadsOf(channel.id).map((thread) => (
+                      <button type="button" key={thread.id} className={`channel-row channel-thread is-thread ${selectedChannel === thread.id ? "is-selected" : ""}`} onClick={() => onSelect(thread.id)}>
+                        <ArrowElbowDownRight size={16} />
+                        <span>{thread.label}</span>
+                        {thread.unread && <span className="unread-count">{thread.unread}</span>}
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="channel-section voice-section">
-          <div className="section-heading">
-            <span>ボイスチャンネル</span>
-            <IconButton label="ボイスチャンネルを追加" onClick={onOpenGuildSettings}><Plus size={17} /></IconButton>
-          </div>
-          {groupByCategory(voiceChannels).map((group) => (
-            <div className="channel-group" key={group.category?.id ?? "uncategorized"}>
-              {group.category && <p className="category-label">{group.category.label}</p>}
-              {group.items.map(renderVoiceChannel)}
-            </div>
-          ))}
-        </section>
+            );
+          })}
+        </div>
 
         {visibleDirect.length > 0 && (
           <section className="channel-section">
@@ -556,11 +549,11 @@ function ChatPanel({
           )}
         </div>
         <div className="chat-tools">
+          <IconButton label="スレッド一覧"><ListPlus size={21} /></IconButton>
           <IconButton label="ピン留め"><PushPin size={21} /></IconButton>
           <IconButton label="メンバーを招待"><UserPlus size={21} /></IconButton>
-          <IconButton label="スレッド一覧"><ListPlus size={21} /></IconButton>
-          <IconButton label="検索" onClick={onOpenSearch}><MagnifyingGlass size={22} /></IconButton>
-          <IconButton label="外観設定" active={settingsOpen} onClick={onSettings}><SlidersHorizontal size={22} /></IconButton>
+          <IconButton label="外観設定" active={settingsOpen} onClick={onSettings}><SlidersHorizontal size={21} /></IconButton>
+          <button type="button" className="header-search" onClick={onOpenSearch} aria-label="検索"><span>{direct ? "検索" : `${channelLabel}を検索`}</span><MagnifyingGlass size={16} /></button>
         </div>
         {settingsOpen && <AppearancePopover {...appearance} />}
       </header>
@@ -613,30 +606,30 @@ function ChatPanel({
             })}
           </div>
         )}
-        <textarea disabled={!enabled || sending} value={draft} onChange={(event) => {
-          setDraft(event.target.value);
-          if (event.target.value.trim()) onTyping?.();
-        }} placeholder={enabled ? `${direct ? "" : "#"}${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
-        <div className="composer-actions">
-          <div>
-            <input
-              ref={fileInputRef}
-              className="visually-hidden"
-              type="file"
-              multiple
-              onChange={(event) => {
-                const selected = [...(event.target.files ?? [])];
-                setFiles((current) => [...current, ...selected].slice(0, 10));
-                event.currentTarget.value = "";
-              }}
-            />
-            <IconButton label="ファイルを追加" onClick={() => fileInputRef.current?.click()}><Plus size={20} /></IconButton>
+        <div className="composer-row">
+          <input
+            ref={fileInputRef}
+            className="visually-hidden"
+            type="file"
+            multiple
+            onChange={(event) => {
+              const selected = [...(event.target.files ?? [])];
+              setFiles((current) => [...current, ...selected].slice(0, 10));
+              event.currentTarget.value = "";
+            }}
+          />
+          <IconButton label="ファイルを追加" className="composer-plus" onClick={() => fileInputRef.current?.click()}><Plus size={18} weight="bold" /></IconButton>
+          <textarea disabled={!enabled || sending} value={draft} onChange={(event) => {
+            setDraft(event.target.value);
+            if (event.target.value.trim()) onTyping?.();
+          }} placeholder={enabled ? `${direct ? "" : "#"}${channelLabel} へメッセージを送信` : "テキストチャンネルを選択してください"} rows={1} aria-label="メッセージ" />
+          <div className="composer-actions">
             <IconButton label="書式"><TextAa size={20} /></IconButton>
             <IconButton label="絵文字"><Smiley size={20} /></IconButton>
             <IconButton label="メンション"><At size={20} /></IconButton>
             <IconButton label="画像"><ImageSquare size={20} /></IconButton>
+            <button type="submit" className="send-button" disabled={!enabled || sending || (!draft.trim() && files.length === 0)} aria-label="送信"><PaperPlaneTilt size={22} weight="fill" /></button>
           </div>
-          <button type="submit" className="send-button" disabled={!enabled || sending || (!draft.trim() && files.length === 0)} aria-label="送信"><PaperPlaneTilt size={24} weight="fill" /></button>
         </div>
       </form>
     </main>
@@ -878,7 +871,12 @@ function AttachmentCard({ attachment, onFetch }: { attachment: ViewAttachment; o
 function MemberPanel({ members: visibleMembers, loading, onClose, onLogout, onAccount, onSelect }: { members: Member[]; loading: boolean; onClose: () => void; onLogout: () => void; onAccount?: () => void; onSelect?: (memberId: string) => void }) {
   const [query, setQuery] = useState("");
   const filteredMembers = visibleMembers.filter((member) => member.name.toLowerCase().includes(query.toLowerCase()));
-  const groups = [...new Set(filteredMembers.map((member) => member.role))];
+  // Online members are grouped by their highest role like Discord; everyone offline shares one trailing group.
+  const online = filteredMembers.filter((member) => member.status !== "offline");
+  const memberSections = [
+    ...[...new Set(online.map((member) => member.role))].map((role) => ({ key: `role:${role}`, title: role, members: online.filter((member) => member.role === role) })),
+    ...(filteredMembers.some((member) => member.status === "offline") ? [{ key: "offline", title: "オフライン", members: filteredMembers.filter((member) => member.status === "offline") }] : []),
+  ];
 
   return (
     <aside className="member-panel">
@@ -896,21 +894,17 @@ function MemberPanel({ members: visibleMembers, loading, onClose, onLogout, onAc
       </div>
       <div className="member-scroll">
         {loading && <p className="panel-inline-state">メンバーを読み込み中…</p>}
-        {groups.map((role) => {
-          const roleMembers = filteredMembers.filter((member) => member.role === role);
-          if (!roleMembers.length) return null;
-          return (
-            <section className="member-group" key={role}>
-              <h2>{role} — {roleMembers.length}</h2>
-              {roleMembers.map((member) => (
-                <button type="button" className="member-row" key={member.id ?? member.name} onClick={() => member.id && onSelect?.(member.id)}>
-                  <Avatar src={member.avatar} size="medium" status={member.status} />
-                  <span><strong>{member.name}</strong><small>{member.detail || (member.status === "online" ? "オンライン" : "オフライン")}</small></span>
-                </button>
-              ))}
-            </section>
-          );
-        })}
+        {memberSections.map((section) => (
+          <section className="member-group" key={section.key}>
+            <h2>{section.title} — {section.members.length}</h2>
+            {section.members.map((member) => (
+              <button type="button" className={`member-row ${member.status === "offline" ? "is-offline" : ""}`} key={member.id ?? member.name} onClick={() => member.id && onSelect?.(member.id)}>
+                <Avatar src={member.avatar} size="medium" status={member.status} />
+                <span><strong style={member.roleColor ? { color: member.roleColor } : undefined}>{member.name}</strong><small>{member.detail || (member.status === "online" ? "オンライン" : "オフライン")}</small></span>
+              </button>
+            ))}
+          </section>
+        ))}
         {!loading && filteredMembers.length === 0 && <p className="panel-inline-state">該当するメンバーはいません</p>}
       </div>
     </aside>
@@ -992,7 +986,8 @@ function DesktopWorkspace() {
   }));
   const visibleMembers: Member[] = isDemo ? members : workspace.members.map((member) => {
     const assignedRoles = workspace.roles.filter((role) => member.role_ids.includes(role.id)).sort((left, right) => right.position - left.position);
-    const roleName = assignedRoles.find((role) => !role.managed)?.name ?? "メンバー";
+    const topRole = assignedRoles.find((role) => !role.managed);
+    const roleName = topRole?.name ?? "メンバー";
     const status = member.presence.status === "ONLINE" ? "online" : member.presence.status === "OFFLINE" ? "offline" : "away";
     return {
       id: member.user.id,
@@ -1000,6 +995,7 @@ function DesktopWorkspace() {
       avatar: member.user.avatar_url ?? assets.mountain,
       status,
       role: roleName,
+      roleColor: topRole?.color ?? null,
       detail: member.presence.custom_text ?? (status === "online" ? "オンライン" : status === "away" ? "取り込み中" : "オフライン"),
     };
   });

@@ -13,6 +13,7 @@ export type Member = {
   avatar: string;
   status: "online" | "away" | "offline";
   role: string;
+  roleColor?: string | null;
   detail?: string;
 };
 
